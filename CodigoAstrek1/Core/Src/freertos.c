@@ -40,6 +40,7 @@
 
 #include "Sensors_I2C.h"
 #include "LoRa_RYLR998.h"
+#include "datalogger.h"
 
 /* USER CODE END Includes */
 
@@ -121,14 +122,21 @@ osThreadId_t TransmisionHandle;
 const osThreadAttr_t Transmision_attributes = {
 		.name = "Transmision",
 		.stack_size = 512 * 4,
-		.priority = (osPriority_t) osPriorityLow,
+		.priority = (osPriority_t) osPriorityLow1,
 };
 /* Definitions for Sensores_I2C */
 osThreadId_t Sensores_I2CHandle;
 const osThreadAttr_t Sensores_I2C_attributes = {
 		.name = "Sensores_I2C",
-		.stack_size = 512 * 4,
+		.stack_size = 256 * 4,
 		.priority = (osPriority_t) osPriorityBelowNormal,
+};
+/* Definitions for logTask */
+osThreadId_t logTaskHandle;
+const osThreadAttr_t logTask_attributes = {
+		.name = "logTask",
+		.stack_size = 1024 * 4,
+		.priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for sensorDataQueue */
 osMessageQueueId_t sensorDataQueueHandle;
@@ -154,6 +162,11 @@ const osMessageQueueAttr_t navStatesQueue_attributes = {
 osMessageQueueId_t hcsr04DataQueueHandle;
 const osMessageQueueAttr_t hcsr04DataQueue_attributes = {
 		.name = "hcsr04DataQueue"
+};
+/* Definitions for logQueue */
+osMessageQueueId_t logQueueHandle;
+const osMessageQueueAttr_t logQueue_attributes = {
+		.name = "logQueue"
 };
 /* Definitions for hcsr04Semaphore */
 osSemaphoreId_t hcsr04SemaphoreHandle;
@@ -241,6 +254,7 @@ void UltrasonidoTask(void *argument);
 void GPSTask(void *argument);
 void TransmisionTask(void *argument);
 void SensoresTask(void *argument);
+void Datos_SD(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -287,10 +301,13 @@ void MX_FREERTOS_Init(void) {
 	controlDataQueueHandle = osMessageQueueNew (5, sizeof(ControlCommand_t), &controlDataQueue_attributes);
 
 	/* creation of navStatesQueue */
-	//navStatesQueueHandle = osMessageQueueNew (5, sizeof(evento_navegacion), &navStatesQueue_attributes);
+	navStatesQueueHandle = osMessageQueueNew (5, sizeof(evento_navegacion), &navStatesQueue_attributes);
 
 	/* creation of hcsr04DataQueue */
-	hcsr04DataQueueHandle = osMessageQueueNew (5, sizeof(uint16_t), &hcsr04DataQueue_attributes);
+	hcsr04DataQueueHandle = osMessageQueueNew (5, sizeof(HCSR04_Data_t), &hcsr04DataQueue_attributes);
+
+	/* creation of logQueue */
+	logQueueHandle = osMessageQueueNew (5, sizeof(Datalog_Entry_t), &logQueue_attributes);
 
 	/* USER CODE BEGIN RTOS_QUEUES */
 	/* add queues, ... */
@@ -298,13 +315,13 @@ void MX_FREERTOS_Init(void) {
 
 	/* Create the thread(s) */
 	/* creation of Navegacion */
-	//NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
+	NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
 
 	/* creation of Taquito */
 	TaquitoHandle = osThreadNew(TaquitoTask, NULL, &Taquito_attributes);
 
 	/* creation of NavGlobal */
-	//NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
+	NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
 
 	/* creation of Control */
 	ControlHandle = osThreadNew(ControlTask, NULL, &Control_attributes);
@@ -320,6 +337,9 @@ void MX_FREERTOS_Init(void) {
 
 	/* creation of Sensores_I2C */
 	Sensores_I2CHandle = osThreadNew(SensoresTask, NULL, &Sensores_I2C_attributes);
+
+	/* creation of logTask */
+	logTaskHandle = osThreadNew(Datos_SD, NULL, &logTask_attributes);
 
 	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -394,117 +414,15 @@ void Navegacion_Global(void *argument)
 /* USER CODE END Header_ControlTask */
 void ControlTask(void *argument)
 {
-    // ===== INICIALIZACIÓN =====
-    osDelay(500);  // ← AÑADIDO: Esperar a que otras tareas inicialicen
-
-    if (!control_initialized) {
-        PoseController_Init(&pose_controller);
-        PWM_InitCompensation(&pwm_compensation);
-        control_initialized = 1;
-
-        // Mensaje de inicio SIN bloqueo
-        HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Inicializado\r\n", 24, 100);
-    }
-
-    // Variables locales
-    static float sim_x = 0.0f;
-    static float sim_y = 0.0f;
-    static float sim_theta = 0.0f;
-    static uint8_t target_set = 0;
-    static uint16_t telemetry_counter = 0;
-
-    GPS_Data_t gps_data;
-    ControlCommand_t cmd;
-    osStatus_t status;
-
-    // Variables de trabajo para el control
-	float vx_cmd = 0.0f;
-	float wz_cmd = 0.0f;
-
-    // ===== BUCLE PRINCIPAL =====
-    for(;;)
-    {
-    	 // 1. Leer GPS actual
-		status = osMessageQueueGet(gpsDataQueueHandle, &gps_data, NULL, 10);
-		if (status != osOK) continue;
-
-		// Intentar leer un comando de la cola de Taquito (no bloqueante, timeout 0)
-		status = osMessageQueueGet(controlDataQueueHandle, &cmd, NULL, 0);
-		if (status != osOK) continue;
-
-		// 2. Convertir GPS a coordenadas locales (usar gpsACartesiano)
-		P_Cartesiano pos_actual = gpsACartesiano(estacionTerrena, &gps_data);
-
-		// 3. Obtener orientación (temporalmente de GPS course)
-		float theta_actual = deg2rad(gps_data.course);
-        // ----- SIMULACIÓN GPS -----
-     /*   if (!target_set) {
-            PoseController_SetTarget(&pose_controller, 0.0f, 2.0f);  // ← Target más cercano (2m)
-            target_set = 1;
-            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target: (0.0, 2.0)\r\n", 31, 100);
-        }
-
-        // Simular movimiento
-        sim_x += pose_controller.vx_cmd * cosf(sim_theta) * POSE_CONTROL_DT;
-        sim_y += pose_controller.vx_cmd * sinf(sim_theta) * POSE_CONTROL_DT;
-        sim_theta += pose_controller.wz_cmd * POSE_CONTROL_DT;
-        sim_theta = normalize_angle(sim_theta); */
-
-        // ----- ACTUALIZAR CONTROLADOR -----
-        PoseController_Update(&pose_controller, sim_x, sim_y, sim_theta);
-
-        // ----- VERIFICAR SI LLEGAMOS -----
-        if (pose_controller.target_reached) {
-            PWM_Commands_t stop_cmd = {0, 0, 0, 0};
-            Rover_SetPWM_Differential(&Rover, stop_cmd);
-
-            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target alcanzado!\r\n", 30, 100);
-
-            // Resetear posición simulada para nueva prueba
-            sim_x = 0.0f;
-            sim_y = 0.0f;
-            sim_theta = 0.0f;
-
-            // Resetear controlador
-            PoseController_Reset(&pose_controller);
-
-            target_set = 0;
-            osDelay(2000);
-            continue;
-        }
-
-        // ----- CINEMÁTICA Y PWM -----
-        WheelVelocities_t wheel_velocities = Kinematics_Inverse(
-            pose_controller.vx_cmd,
-            pose_controller.wz_cmd
-        );
-
-        PWM_Commands_t pwm_commands = PWM_FromWheelVelocities(
-            wheel_velocities,
-            &pwm_compensation
-        );
-
-        Rover_SetPWM_Differential(&Rover, pwm_commands);
-
-        // ----- TELEMETRÍA REDUCIDA (cada 2 segundos) -----
-        telemetry_counter++;
-        if (telemetry_counter >= 40) {  // 40 * 50ms = 2 segundos
-            telemetry_counter = 0;
-
-            // Telemetría compacta
-            char telem[128];
-            snprintf(telem, sizeof(telem),
-                    "Pos:(%.2f,%.2f) Dist:%.2fm PWM:(%u,%u)\r\n",
-                    sim_x, sim_y,
-                    pose_controller.distance_to_target,
-                    pwm_commands.pwm_right, pwm_commands.pwm_left);
-
-            HAL_UART_Transmit(&huart1, (uint8_t*)telem, strlen(telem), 100);
-        }
-
-        osDelay(50);  // 20Hz
-    }
+	/* USER CODE BEGIN ControlTask */
+	/* Infinite loop */
+	for(;;)
+	{
+		osDelay(1);
+	}
+	/* USER CODE END ControlTask */
 }
+
 /* USER CODE BEGIN Header_UltrasonidoTask */
 /**
  * @brief Function implementing the Ultrasonido thread.
@@ -588,11 +506,62 @@ void GPSTask(void *argument)
 void TransmisionTask(void *argument)
 {
 	/* USER CODE BEGIN TransmisionTask */
+
+	Sensors_I2C_Handle_t i2c_data;
+	GPS_Data_t gps_data;
+	LoRa_t lora_module;
+
+	// La estructura que rellenaremos y enviaremos al logger
+	Datalog_Entry_t current_log_entry = {0};
+	char msg[128];
 	/* Infinite loop */
 	for(;;)
 	{
-		osDelay(1);
+		LoRa_Init(&lora_module, &huart1);
+		LoRa_Setup(&lora_module,
+				"1",  // Dirección del dispositivo
+				"18", // ID de Red
+				"915000000"); // Banda (ej. 915 MHz)
+
+		// 1. Esperar por datos de los sensores I2C (cada 2 seg)
+		if (osMessageQueueGet(sensorDataQueueHandle, &i2c_data, NULL, osWaitForever) == osOK)
+		{
+			// 2. Intentar obtener los últimos datos del GPS (no esperar)
+			// (Esto vacía la cola de GPS por si hay datos nuevos)
+			osMessageQueueGet(gpsDataQueueHandle, &gps_data, NULL, 0);
+
+			// 3. Rellenar la estructura de log
+			current_log_entry.timestamp = gps_data.timestamp; // O mejor, un timestamp del GPS
+			current_log_entry.latitude = gps_data.latitude;
+			current_log_entry.longitude = gps_data.longitude;
+			current_log_entry.gps_fix = gps_data.fix_quality;
+			current_log_entry.temperature = i2c_data.data.temperature;
+			current_log_entry.humidity = i2c_data.data.humidity;
+			current_log_entry.eco2 = i2c_data.data.eco2;
+			current_log_entry.tvoc = i2c_data.data.tvoc;
+			current_log_entry.light = i2c_data.data.light;
+
+			// 4. Enviar la estructura COMPLETA a la cola de Log
+			osMessageQueuePut(logQueueHandle, &current_log_entry, 0, 0);
+
+			// 5. Formatear y enviar por LoRa (como antes)
+			snprintf(msg, sizeof(msg),
+					"%.1f,%.1f,%u,%u,%.2f,%.2f,%.2f,%.1f",
+					i2c_data.data.temperature,
+					i2c_data.data.humidity,
+					i2c_data.data.eco2,
+					i2c_data.data.tvoc,
+					i2c_data.data.accel[0],
+					i2c_data.data.accel[1],
+					i2c_data.data.accel[2],
+					i2c_data.data.light); // Nos falta el gps
+
+			char cmd[160];
+			snprintf(cmd, sizeof(cmd), "AT+SEND=0,%d,%s\r\n", (int)strlen(msg), msg);
+			Serial_PrintString(cmd);
+		}
 	}
+
 	/* USER CODE END TransmisionTask */
 }
 
@@ -607,7 +576,7 @@ void SensoresTask(void *argument)
 {
 	/* USER CODE BEGIN SensoresTask */
 	Sensors_I2C_Handle_t hsensors = {0};
-	LoRa_t lora_module;
+
 
 	if (Sensors_I2C_Init(&hsensors, &hi2c1)==HAL_OK)
 	{
@@ -617,11 +586,7 @@ void SensoresTask(void *argument)
 	{
 		Serial_PrintString("No se logró inicializar los sensores \n\r");
 	}
-	LoRa_Init(&lora_module, &huart1);
-	LoRa_Setup(&lora_module,
-			"1",  // Dirección del dispositivo
-			"18", // ID de Red
-			"915000000"); // Banda (ej. 915 MHz)
+
 
 	/* Infinite loop */
 	for(;;)
@@ -639,28 +604,48 @@ void SensoresTask(void *argument)
 		MPU6050_Read(&hsensors);
 		LTR390_Read(&hsensors);
 
-		char msg[128];
-
-		// ----- MODIFICACIÓN DEL SNPRINTF -----
-		snprintf(msg, sizeof(msg),
-				"%.1f,%.1f,%u,%u,%.2f,%.2f,%.2f,%.1f",
-				hsensors.data.temperature,
-				hsensors.data.humidity,
-				hsensors.data.eco2,
-				hsensors.data.tvoc,
-				hsensors.data.accel[0],
-				hsensors.data.accel[1],
-				hsensors.data.accel[2],
-				hsensors.data.light); // Volvemos a imprimir el valor float
-
-		char cmd[160];
-		snprintf(cmd, sizeof(cmd), "AT+SEND=0,%d,%s\r\n", (int)strlen(msg), msg);
-		Serial_PrintString(cmd);
+		osMessageQueuePut(sensorDataQueueHandle, &hsensors, 0, 0);
 		osDelay(200);
 
 	}
 
 	/* USER CODE END SensoresTask */
+}
+
+/* USER CODE BEGIN Header_Datos_SD */
+/**
+ * @brief Function implementing the logTask thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_Datos_SD */
+void Datos_SD(void *argument)
+{
+	/* USER CODE BEGIN Datos_SD */
+	Datalog_Entry_t log_entry;
+	Datalogger_t datalogger;
+
+	// 1. Inicializar el Datalogger
+	// Esperamos un poco para que la SD se estabilice
+	osDelay(2000);
+	if (Datalogger_Init(&datalogger, "LOG_001.BIN") != HAL_OK) {
+		// Error: No se pudo montar la SD.
+		// Aquí podrías encender un LED de error.
+		osThreadTerminate(NULL); // Terminar la tarea
+	}
+	/* Infinite loop */
+	for(;;)
+	{
+		// 2. Esperar (bloquearse) hasta que lleguen datos a la cola de log
+		if (osMessageQueueGet(logQueueHandle, &log_entry, NULL, osWaitForever) == osOK)
+		{
+			// 3. Escribir los datos en la SD
+			Datalogger_LogEntry(&datalogger, &log_entry);
+			// La tarea se bloqueará en f_sync() (dentro de LogEntry),
+			// lo cual es perfecto para una tarea de baja prioridad.
+		}
+		/* USER CODE END Datos_SD */
+	}
 }
 
 /* Private application code --------------------------------------------------*/
