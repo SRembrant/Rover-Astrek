@@ -1,0 +1,3 @@
+../Core/Src/Sensores/I2C_Scanner.c:26:6:I2C_Scanner	4
+../Core/Src/Sensores/I2C_Scanner.c:79:9:I2C_Check_MPU6050	3
+../Core/Src/Sensores/I2C_Scanner.c:130:6:I2C_Test_MPU6050_WhoAmI	5

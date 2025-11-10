@@ -1,0 +1,5 @@
+../Core/Src/Actuadores/Control_Kinematics.c:23:19:Kinematics_Inverse	1
+../Core/Src/Actuadores/Control_Kinematics.c:46:17:Kinematics_Forward	1
+../Core/Src/Actuadores/Control_Kinematics.c:65:7:Kinematics_VelocityToRPM	1
+../Core/Src/Actuadores/Control_Kinematics.c:77:7:Kinematics_RPMToVelocity	1
+../Core/Src/Actuadores/Control_Kinematics.c:88:6:Kinematics_SaturateWheels	7

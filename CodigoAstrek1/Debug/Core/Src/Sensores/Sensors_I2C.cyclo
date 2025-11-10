@@ -1,0 +1,6 @@
+../Core/Src/Sensores/Sensors_I2C.c:31:19:Sensors_I2C_Init	5
+../Core/Src/Sensores/Sensors_I2C.c:70:19:CCS811_Read	4
+../Core/Src/Sensores/Sensors_I2C.c:104:19:MPU6050_Read	2
+../Core/Src/Sensores/Sensors_I2C.c:119:19:HDC1080_Read	3
+../Core/Src/Sensores/Sensors_I2C.c:156:19:LTR390_Read	2
+../Core/Src/Sensores/Sensors_I2C.c:178:19:CCS811_WriteEnvData	1
