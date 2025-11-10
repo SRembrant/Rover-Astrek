@@ -4,8 +4,8 @@
 ../Core/Src/freertos.c:341:6:NavegacionTask	1
 ../Core/Src/freertos.c:359:6:TaquitoTask	1
 ../Core/Src/freertos.c:377:6:Navegacion_Global	1
-../Core/Src/freertos.c:395:6:ControlTask	1
-../Core/Src/freertos.c:413:6:UltrasonidoTask	2
-../Core/Src/freertos.c:452:6:GPSTask	2
-../Core/Src/freertos.c:486:6:TransmisionTask	1
-../Core/Src/freertos.c:504:6:SensoresTask	2
+../Core/Src/freertos.c:395:6:ControlTask	6
+../Core/Src/freertos.c:515:6:UltrasonidoTask	2
+../Core/Src/freertos.c:554:6:GPSTask	2
+../Core/Src/freertos.c:588:6:TransmisionTask	1
+../Core/Src/freertos.c:606:6:SensoresTask	2

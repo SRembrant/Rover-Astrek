@@ -6,11 +6,7 @@
  */
 #include "Control_Pose.h"
 
-// Funciones privadas para PID
-static void PID_Init(PID_Controller_t *pid, float Kp, float Ki, float Kd,
-                     float integral_max, float output_min, float output_max);
-static float PID_Update(PID_Controller_t *pid, float error, float dt);
-static void PID_Reset(PID_Controller_t *pid);
+
 
 /**
  * @brief Inicializa el controlador de pose con parámetros por defecto
@@ -171,7 +167,7 @@ float angle_difference(float target, float current)
 /**
  * @brief Inicializa un controlador PID
  */
-static void PID_Init(PID_Controller_t *pid, float Kp, float Ki, float Kd,
+void PID_Init(PID_Controller_t *pid, float Kp, float Ki, float Kd,
                     float integral_max, float output_min, float output_max)
 {
     pid->Kp = Kp;
@@ -188,7 +184,7 @@ static void PID_Init(PID_Controller_t *pid, float Kp, float Ki, float Kd,
 /**
  * @brief Actualiza PID y retorna salida
  */
-static float PID_Update(PID_Controller_t *pid, float error, float dt)
+float PID_Update(PID_Controller_t *pid, float error, float dt)
 {
     // Término proporcional
     float P = pid->Kp * error;
@@ -219,7 +215,7 @@ static float PID_Update(PID_Controller_t *pid, float error, float dt)
 /**
  * @brief Resetea estados internos del PID
  */
-static void PID_Reset(PID_Controller_t *pid)
+void PID_Reset(PID_Controller_t *pid)
 {
     pid->error_prev = 0.0f;
     pid->integral = 0.0f;

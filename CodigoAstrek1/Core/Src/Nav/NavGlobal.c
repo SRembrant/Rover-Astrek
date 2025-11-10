@@ -57,18 +57,7 @@ static float millas_nauticas_a_grados(float millas_nauticas) {
  * @return Valor en grados del rumbo
  */
 
-static float calculate_bearing(GPS_Data_t* current, GPS_Data_t *target) {
-    float lat1 = deg2rad(current->latitude);
-    float lat2 = deg2rad(target->latitude);
-    float dLon = deg2rad(target->longitude - current->longitude);
 
-    float y = sinf(dLon) * cosf(lat2);
-    float x = cosf(lat1) * sinf(lat2) - sinf(lat1) * cosf(lat2) * cosf(dLon);
-
-    float bearing = atan2f(y, x);
-    bearing = rad2deg(bearing);
-    return fmodf((bearing + 360.0f), 360.0f);  // Normaliza a [0, 360)
-}
 
 
 
@@ -79,6 +68,7 @@ static float calculate_bearing(GPS_Data_t* current, GPS_Data_t *target) {
  * @Param estacionTerrena -> es la ubicacionn de la estacion terrena
  * @Param target -> es una referencia variable al siguiente target de control
  * */
+/*
 void navGlobal_task(void *argument)
 {
 	//Declaracion de variables
@@ -161,5 +151,5 @@ void navGlobal_task(void *argument)
 	//	osDelay(500);
 	}
 }
-
+*/
 

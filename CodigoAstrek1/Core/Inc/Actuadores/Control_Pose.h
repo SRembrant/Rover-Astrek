@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include "Control_Rover.h"
 
 // Constantes de configuración
 #define POSE_CONTROL_FREQUENCY_HZ    20.0f    // Frecuencia de control (20Hz)
@@ -74,6 +75,33 @@ typedef struct {
 
 } PoseController_t;
 
+
+//estructura para el PID del seguimiento de pared
+typedef struct {
+    PID_Controller_t pid_wall;
+    float dist_lateral_deseada;
+} WallFollow_Controller_t;
+
+
+
+// Estructura de comunicación ampliada
+typedef struct {
+    Rover_Control_Mode_t mode;  // El modo de operación
+    //WALL FOLLOW
+    float target_vx;            // Velocidad lineal deseada (para Wall Follow)
+    float target_wz;            // Velocidad angular deseada (para giros puros o Wall Follow)
+    float distance_cm;          // Distancia lateral (solo relevante para Wall Follow)
+    int8_t wall_direction;      // Dirección de pared (1 o -1)
+    //WAYPOIINTS
+    float target_x;             // X objetivo (para Pose Target o Giro)
+    float target_y;             // Y objetivo (para Pose Target o Giro)
+    //GIROS ESTATICOS
+    float target_theta;         // Theta objetivo (para Giro de 90 grados)
+
+} ControlCommand_t;
+
+
+
 // Funciones públicas
 void PoseController_Init(PoseController_t *ctrl);
 void PoseController_SetTarget(PoseController_t *ctrl, float x_target, float y_target);
@@ -83,5 +111,8 @@ void PoseController_Reset(PoseController_t *ctrl);
 // Utilidades
 float normalize_angle(float angle);
 float angle_difference(float target, float current);
+void PID_Init(PID_Controller_t *pid, float Kp, float Ki, float Kd,float integral_max, float output_min, float output_max);
+float PID_Update(PID_Controller_t *pid, float error, float dt);
+void PID_Reset(PID_Controller_t *pid);
 
 #endif /* INC_ACTUADORES_CONTROL_POSE_H_ */
