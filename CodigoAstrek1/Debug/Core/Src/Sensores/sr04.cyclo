@@ -1,0 +1,5 @@
+../Core/Src/Sensores/sr04.c:31:13:delay_us	2
+../Core/Src/Sensores/sr04.c:44:6:HCSR04_Init	1
+../Core/Src/Sensores/sr04.c:60:19:HCSR04_ReadDistance	10
+../Core/Src/Sensores/sr04.c:120:6:HCSR04_InputCaptureCallback	16
+../Core/Src/Sensores/sr04.c:160:6:HCSR04_TimerOverflowCallback	3

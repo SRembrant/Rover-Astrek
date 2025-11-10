@@ -1,0 +1,8 @@
+../Core/Src/Actuadores/Control_PWM.c:17:16:PWM_FromWheelVelocities	4
+../Core/Src/Actuadores/Control_PWM.c:60:10:PWM_VelocityToDuty	2
+../Core/Src/Actuadores/Control_PWM.c:77:10:PWM_RPMToDuty	4
+../Core/Src/Actuadores/Control_PWM.c:100:17:interpolate_LUT	4
+../Core/Src/Actuadores/Control_PWM.c:131:10:PWM_CompensateBattery	3
+../Core/Src/Actuadores/Control_PWM.c:153:10:PWM_CompensateSlope	3
+../Core/Src/Actuadores/Control_PWM.c:174:17:saturate_PWM	4
+../Core/Src/Actuadores/Control_PWM.c:187:6:PWM_InitCompensation	1

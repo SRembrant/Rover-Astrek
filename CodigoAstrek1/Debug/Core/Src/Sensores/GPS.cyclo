@@ -1,0 +1,13 @@
+../Core/Src/Sensores/GPS.c:31:6:GPS_Init	1
+../Core/Src/Sensores/GPS.c:54:6:GPS_StartReceive	1
+../Core/Src/Sensores/GPS.c:63:6:GPS_ProcessData	4
+../Core/Src/Sensores/GPS.c:99:13:GPS_ParseBuffer	10
+../Core/Src/Sensores/GPS.c:146:16:GPS_ValidateChecksum	4
+../Core/Src/Sensores/GPS.c:168:13:GPS_ParseNMEA	5
+../Core/Src/Sensores/GPS.c:187:13:GPS_ParseGGA	21
+../Core/Src/Sensores/GPS.c:284:13:GPS_ParseRMC	20
+../Core/Src/Sensores/GPS.c:361:7:GPS_ConvertToDecimalDegrees	3
+../Core/Src/Sensores/GPS.c:377:6:GPS_PrintData	2
+../Core/Src/Sensores/GPS.c:407:6:GPS_UART_RxHalfCpltCallback	1
+../Core/Src/Sensores/GPS.c:419:6:GPS_UART_RxCpltCallback	1
+../Core/Src/Sensores/GPS.c:430:6:GPS_UART_ErrorCallback	2

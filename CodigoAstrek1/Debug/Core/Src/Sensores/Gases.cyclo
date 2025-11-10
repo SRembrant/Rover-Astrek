@@ -1,0 +1,16 @@
+../Core/Src/Sensores/Gases.c:21:17:CCS811_Init	10
+../Core/Src/Sensores/Gases.c:78:17:CCS811_ReadData	8
+../Core/Src/Sensores/Gases.c:134:6:CCS811_IsDataReady	4
+../Core/Src/Sensores/Gases.c:151:10:CCS811_GetCO2	3
+../Core/Src/Sensores/Gases.c:162:10:CCS811_GetTVOC	3
+../Core/Src/Sensores/Gases.c:173:17:CCS811_SetEnvironmentalData	3
+../Core/Src/Sensores/Gases.c:196:17:CCS811_GetBaseline	5
+../Core/Src/Sensores/Gases.c:215:17:CCS811_SetBaseline	3
+../Core/Src/Sensores/Gases.c:232:17:CCS811_SoftwareReset	3
+../Core/Src/Sensores/Gases.c:252:9:CCS811_GetErrorStatus	3
+../Core/Src/Sensores/Gases.c:263:6:CCS811_HasError	3
+../Core/Src/Sensores/Gases.c:276:24:CCS811_WriteRegister	3
+../Core/Src/Sensores/Gases.c:302:24:CCS811_ReadRegister	3
+../Core/Src/Sensores/Gases.c:325:24:CCS811_CheckHardwareID	3
+../Core/Src/Sensores/Gases.c:339:24:CCS811_StartApp	1
+../Core/Src/Sensores/Gases.c:347:24:CCS811_SetMeasurementMode	2
