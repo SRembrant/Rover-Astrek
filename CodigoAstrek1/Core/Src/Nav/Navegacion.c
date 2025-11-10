@@ -116,115 +116,20 @@ float distanciaNodos(GPS_Data_t* nodo1, GPS_Data_t* nodo2){
     return distance;
 }
 
+float calculate_bearing(GPS_Data_t* current, GPS_Data_t *target) {
+    float lat1 = deg2rad(current->latitude);
+    float lat2 = deg2rad(target->latitude);
+    float dLon = deg2rad(target->longitude - current->longitude);
 
-/**
- * @brief vTask de navegacion, funciona como una maquina de estados finitos para ejecutar el
- *        algoritmo de navegacion mas apropiado segun sea el caso
- *
- *
- * --revisar como se hace la lectura de opcion, idealmente seria un while, sin embargo, es lo mas apropieado?
- *   o quizas es mejor retornar un valor de opcion y asi mismo recibirlo por parametro, para que el while sea externo;
- */
+    float y = sinf(dLon) * cosf(lat2);
+    float x = cosf(lat1) * sinf(lat2) - sinf(lat1) * cosf(lat2) * cosf(dLon);
 
-void navegacion_Task(void *argument){
-	//seccion de variables e inicializacion
-
-	static estado_navegacion estadoNavActual = NAV_DSTAR;
-
-	//static osStatus_t statusMachine; //usar al momento de hacer debug
-	static evento_navegacion evenNav = TARGET_ALCANZADO; //para la prueba
-
-	static osStatus_t status=osOK;
-	static bool banderaPrimeraEjecucion = true;
-	  osThreadSuspend(navGlobalHandle);
-	  osThreadSuspend(taquitoHandle);
-	for(;;){
-
-		osDelay(5000); //solo para las pruebas
-		//Serial_PrintString("selector...");
-		//falta: comunicar datos globales con Transmision_Task
-
-		//si es la primera ejecucion, no tiene sentido leer la cola
-		if(banderaPrimeraEjecucion){
-			status = osOK;
-			banderaPrimeraEjecucion = false;
-		//	Serial_PrintString("primera ejecucion...");
-		}
-		else{
-			status=osMessageQueueGet(navStatesQueueHandle, &evenNav, NULL, 10);
-		//	if(evenNav == TARGET_GENERADO) 	Serial_PrintString("RECIIBIIIDO TARGET...");
-		}
-
-		if(status == osOK){
-			//	Serial_PrintString("Status okk...");
-			switch(estadoNavActual){
-				case NAV_GLOBAL: //Navegacion Global
-				//	Serial_PrintString("  caso global  ");
-					if(evenNav==META_ALCANZADA){
-					//	Serial_PrintString("se acabo navegaciion");
-						osThreadSuspend(osThreadGetId());
-					}
-					else if(evenNav==TARGET_GENERADO){
-					//	osThreadResume(/*navDStarHandle*/);
-					//	Serial_PrintString("  target_generado reciibiido  ");
-						estadoNavActual = NAV_DSTAR;
-
-						/*/solo para probar GPS
-						estadoNavActual =NAV_TAQUITO;
-						evenNav=CAMINO_NO_ENCONTRADO;
-						osThreadResume(taquitoHandle);
-						osThreadSuspend(osThreadGetId());
-						//fin solo para probar GPS*/
-
-				//		banderaPrimeraEjecucion=true; //esto es solo para la prueba
-					}
-					break;
-				case NAV_DSTAR: //D*
-				//	Serial_PrintString("  caso Dstar  ");
-					if(evenNav==TARGET_ALCANZADO){
-						//enviar copia del gridMap a transmision
-				//		Serial_PrintString("evento: Target alcanzado. Pasando a Nav global \n\n");
-						estadoNavActual=NAV_GLOBAL;
-						osThreadResume(navGlobalHandle);
-						osThreadSuspend(osThreadGetId());
-					}
-					else if(evenNav==CAMINO_NO_ENCONTRADO){
-						estadoNavActual=NAV_TAQUITO;
-						osThreadResume(taquitoHandle);
-						osThreadSuspend(osThreadGetId());
-					}
-					break;
-				case NAV_TAQUITO: //Taquito
-				//	Serial_PrintString("  caso taquiito  ");
-					if(evenNav==OBSTACULO_RODEADO){
-						//enviar copia del mapaHash a transmision
-						osThreadResume(navGlobalHandle);
-						estadoNavActual=NAV_GLOBAL;
-						osThreadSuspend(osThreadGetId());
-					}
-					else if(evenNav == ERROR_DESCONOCIDO){
-						osThreadResume(navGlobalHandle);
-						estadoNavActual=NAV_GLOBAL;
-						osThreadSuspend(osThreadGetId());
-					}
-					break;
-				default: //bajo ningun concepto deberia ejecutarse esta linea... pero por si algo
-					estadoNavActual=NAV_GLOBAL;
-					osThreadResume(navGlobalHandle);
-					osThreadSuspend(osThreadGetId());
-					break;
-			}
-		}
-
-			/*//medir stakkk
-
-			uint32_t free_words = osThreadGetStackSpace(osThreadGetId()); // stack libre en "words" (4 bytes)
-			uint32_t free_bytes = free_words * sizeof(uint32_t);
-
-			printf("Stack libre (min): %lu words = %lu bytes\r\n", free_words, free_bytes);
-*/
-
-	}
+    float bearing = atan2f(y, x);
+    bearing = rad2deg(bearing);
+    return fmodf((bearing + 360.0f), 360.0f);  // Normaliza a [0, 360)
 }
+
+
+
 
 

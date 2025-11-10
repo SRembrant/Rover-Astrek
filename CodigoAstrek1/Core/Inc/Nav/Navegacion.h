@@ -17,9 +17,9 @@
 extern GPS_Data_t * estacionTerrena;
 
 // -- HANDLES GLOBALES --
-extern osThreadId_t navGlobalHandle;
+//extern osThreadId_t navGlobalHandle;
 extern osThreadId_t taquitoHandle;
-extern osThreadId_t navegacionHandle;
+//extern osThreadId_t navegacionHandle;
 
 // -- COLAS DE TAREAS --
 	//colas de sensores
@@ -27,7 +27,7 @@ extern osMessageQueueId_t gpsDataQueueHandle;
 extern osMessageQueueId_t sensorDataQueueHandle;
 	//colas de navegacion
 extern osMessageQueueId_t controlDataQueueHandle;
-extern osMessageQueueId_t navStatesQueueHandle;
+//extern osMessageQueueId_t navStatesQueueHandle;
 
 // -- CONSTANTES DEL SISTEMA --
 #define EARTH_RADIUS 6371000.0f // Radio de la Tierra en metros
@@ -83,14 +83,20 @@ float deg2rad(float deg);
 //radianes a grados
 float rad2deg(float rad);
 
+//calcula la menor diferencia entre dos angulos
 float angle_diff(float a, float b);
+
 // coordenadas GPS a plano cartesiano local (Y - Norte, X - este)
 P_Cartesiano gpsACartesiano(GPS_Data_t * origin, GPS_Data_t *target);
+
 // distancia entre dos posiciones GPS
 float distanciaNodos(GPS_Data_t* nodo1, GPS_Data_t* nodo2);
 
+//calculo del bearing entre actual y un target objetivo
+float calculate_bearing(GPS_Data_t* current, GPS_Data_t *target);
+
 // -- TAREA DE NAVEGACION (Maquina de estados) --
-void navegacion_Task(void *argument);
+//void navegacion_Task(void *argument);
 
 
 #endif /* INC_NAV_NAVEGACION_H_ */

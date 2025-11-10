@@ -18,14 +18,13 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
-#include "Control_Rover.h"
 #include "GPS.h"
 #include "IMU.h"
 #include "Serial.h"
 #include "sr04.h"
 
 #include "Navegacion.h"
-#include "NavGlobal.h"
+//#include "NavGlobal.h"
 #include "Taquito.h"
 
 #include "usart.h"
@@ -34,6 +33,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "Control_Rover.h"
 #include "Control_Pose.h"
 #include "Control_Kinematics.h"
 #include "Control_PWM.h"
@@ -284,10 +284,10 @@ void MX_FREERTOS_Init(void) {
 	gpsDataQueueHandle = osMessageQueueNew (5, sizeof(GPS_Data_t), &gpsDataQueue_attributes);
 
 	/* creation of controlDataQueue */
-	controlDataQueueHandle = osMessageQueueNew (5, sizeof(uint16_t), &controlDataQueue_attributes);
+	controlDataQueueHandle = osMessageQueueNew (5, sizeof(ControlCommand_t), &controlDataQueue_attributes);
 
 	/* creation of navStatesQueue */
-	navStatesQueueHandle = osMessageQueueNew (5, sizeof(evento_navegacion), &navStatesQueue_attributes);
+	//navStatesQueueHandle = osMessageQueueNew (5, sizeof(evento_navegacion), &navStatesQueue_attributes);
 
 	/* creation of hcsr04DataQueue */
 	hcsr04DataQueueHandle = osMessageQueueNew (5, sizeof(uint16_t), &hcsr04DataQueue_attributes);
@@ -298,13 +298,13 @@ void MX_FREERTOS_Init(void) {
 
 	/* Create the thread(s) */
 	/* creation of Navegacion */
-	NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
+	//NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
 
 	/* creation of Taquito */
 	TaquitoHandle = osThreadNew(TaquitoTask, NULL, &Taquito_attributes);
 
 	/* creation of NavGlobal */
-	NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
+	//NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
 
 	/* creation of Control */
 	ControlHandle = osThreadNew(ControlTask, NULL, &Control_attributes);
@@ -394,15 +394,117 @@ void Navegacion_Global(void *argument)
 /* USER CODE END Header_ControlTask */
 void ControlTask(void *argument)
 {
-	/* USER CODE BEGIN ControlTask */
-	/* Infinite loop */
-	for(;;)
-	{
-		osDelay(1);
-	}
-	/* USER CODE END ControlTask */
-}
+    // ===== INICIALIZACIÓN =====
+    osDelay(500);  // ← AÑADIDO: Esperar a que otras tareas inicialicen
 
+    if (!control_initialized) {
+        PoseController_Init(&pose_controller);
+        PWM_InitCompensation(&pwm_compensation);
+        control_initialized = 1;
+
+        // Mensaje de inicio SIN bloqueo
+        HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Inicializado\r\n", 24, 100);
+    }
+
+    // Variables locales
+    static float sim_x = 0.0f;
+    static float sim_y = 0.0f;
+    static float sim_theta = 0.0f;
+    static uint8_t target_set = 0;
+    static uint16_t telemetry_counter = 0;
+
+    GPS_Data_t gps_data;
+    ControlCommand_t cmd;
+    osStatus_t status;
+
+    // Variables de trabajo para el control
+	float vx_cmd = 0.0f;
+	float wz_cmd = 0.0f;
+
+    // ===== BUCLE PRINCIPAL =====
+    for(;;)
+    {
+    	 // 1. Leer GPS actual
+		status = osMessageQueueGet(gpsDataQueueHandle, &gps_data, NULL, 10);
+		if (status != osOK) continue;
+
+		// Intentar leer un comando de la cola de Taquito (no bloqueante, timeout 0)
+		status = osMessageQueueGet(controlDataQueueHandle, &cmd, NULL, 0);
+		if (status != osOK) continue;
+
+		// 2. Convertir GPS a coordenadas locales (usar gpsACartesiano)
+		P_Cartesiano pos_actual = gpsACartesiano(estacionTerrena, &gps_data);
+
+		// 3. Obtener orientación (temporalmente de GPS course)
+		float theta_actual = deg2rad(gps_data.course);
+        // ----- SIMULACIÓN GPS -----
+     /*   if (!target_set) {
+            PoseController_SetTarget(&pose_controller, 0.0f, 2.0f);  // ← Target más cercano (2m)
+            target_set = 1;
+            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target: (0.0, 2.0)\r\n", 31, 100);
+        }
+
+        // Simular movimiento
+        sim_x += pose_controller.vx_cmd * cosf(sim_theta) * POSE_CONTROL_DT;
+        sim_y += pose_controller.vx_cmd * sinf(sim_theta) * POSE_CONTROL_DT;
+        sim_theta += pose_controller.wz_cmd * POSE_CONTROL_DT;
+        sim_theta = normalize_angle(sim_theta); */
+
+        // ----- ACTUALIZAR CONTROLADOR -----
+        PoseController_Update(&pose_controller, sim_x, sim_y, sim_theta);
+
+        // ----- VERIFICAR SI LLEGAMOS -----
+        if (pose_controller.target_reached) {
+            PWM_Commands_t stop_cmd = {0, 0, 0, 0};
+            Rover_SetPWM_Differential(&Rover, stop_cmd);
+
+            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target alcanzado!\r\n", 30, 100);
+
+            // Resetear posición simulada para nueva prueba
+            sim_x = 0.0f;
+            sim_y = 0.0f;
+            sim_theta = 0.0f;
+
+            // Resetear controlador
+            PoseController_Reset(&pose_controller);
+
+            target_set = 0;
+            osDelay(2000);
+            continue;
+        }
+
+        // ----- CINEMÁTICA Y PWM -----
+        WheelVelocities_t wheel_velocities = Kinematics_Inverse(
+            pose_controller.vx_cmd,
+            pose_controller.wz_cmd
+        );
+
+        PWM_Commands_t pwm_commands = PWM_FromWheelVelocities(
+            wheel_velocities,
+            &pwm_compensation
+        );
+
+        Rover_SetPWM_Differential(&Rover, pwm_commands);
+
+        // ----- TELEMETRÍA REDUCIDA (cada 2 segundos) -----
+        telemetry_counter++;
+        if (telemetry_counter >= 40) {  // 40 * 50ms = 2 segundos
+            telemetry_counter = 0;
+
+            // Telemetría compacta
+            char telem[128];
+            snprintf(telem, sizeof(telem),
+                    "Pos:(%.2f,%.2f) Dist:%.2fm PWM:(%u,%u)\r\n",
+                    sim_x, sim_y,
+                    pose_controller.distance_to_target,
+                    pwm_commands.pwm_right, pwm_commands.pwm_left);
+
+            HAL_UART_Transmit(&huart1, (uint8_t*)telem, strlen(telem), 100);
+        }
+
+        osDelay(50);  // 20Hz
+    }
+}
 /* USER CODE BEGIN Header_UltrasonidoTask */
 /**
  * @brief Function implementing the Ultrasonido thread.

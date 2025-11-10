@@ -4,4 +4,4 @@
 ../Core/Src/Nav/Navegacion.c:45:7:angle_diff	3
 ../Core/Src/Nav/Navegacion.c:64:14:gpsACartesiano	1
 ../Core/Src/Nav/Navegacion.c:102:7:distanciaNodos	1
-../Core/Src/Nav/Navegacion.c:129:6:navegacion_Task	13
+../Core/Src/Nav/Navegacion.c:119:7:calculate_bearing	1
