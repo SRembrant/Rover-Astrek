@@ -6,7 +6,7 @@
  ******************************************************************************
  */
 /* USER CODE END Header */
-
+//
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
 #include "task.h"
@@ -407,9 +407,9 @@ void ControlTask(void *argument)
     }
 
     // Variables locales
-    static float sim_x = 0.0f;
-    static float sim_y = 0.0f;
-    static float sim_theta = 0.0f;
+   // static float sim_x = 0.0f;
+    //static float sim_y = 0.0f;
+    //static float sim_theta = 0.0f;
     static uint8_t target_set = 0;
     static uint16_t telemetry_counter = 0;
 
