@@ -323,7 +323,7 @@ void navTaquito_task(void *argument){
 		//			comunicacionControl_t.velocidad = 500;
 			//		status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
 
-				//	Rover_Move(Rover, ROVER_RIGHT, 500); //AQUI nececito un giro de 90°
+				//	Rover_Move(Rover, ROVER_RIGHT, 500); //AQUI necesito un giro de 90°
 				}
 				estadoTaq = SEGUIMIENTO_PARED;
 				break;
@@ -443,5 +443,83 @@ void navTaquito_task(void *argument){
 				}
 			}
 		}
+
+		/* -------------------- Chequeo GPS para desviación (si magnetómetro falla) -------------------- */
+		{
+			// Parámetros (puedes ajustar)
+			#define GPS_MIN_MOVE_M         1.0f
+			#define GPS_HDOP_MAX           3.0f
+			#define GPS_FIX_QUALITY_MIN    1
+			#define GPS_HEADING_ON_RAD     (20.0f * M_PI/180.0f)
+			#define GPS_HEADING_OFF_RAD    (8.0f  * M_PI/180.0f)
+			#define GPS_DEBOUNCE_COUNT     3
+			#define GPS_GIRO_TIMEOUT_MS    10000
+
+			static GPS_Data_t gps_prev = {0};
+			static bool gps_prev_valid = false;
+			static int gps_bad_count = 0;
+			static bool gps_fix_active = false;
+			static uint32_t gps_fix_start = 0;
+
+			GPS_Data_t gps_sample;
+			if(osMessageQueueGet(gpsDataQueueHandle, &gps_sample, NULL, 0) == osOK) {
+				if (gps_sample.is_valid && gps_sample.hdop < GPS_HDOP_MAX && gps_sample.fix_quality >= GPS_FIX_QUALITY_MIN) {
+					if (gps_prev_valid) {
+						float dist_m = distanciaNodos(&gps_prev, &gps_sample);
+						if (dist_m >= GPS_MIN_MOVE_M) {
+							float bearing_move_deg = calculate_bearing(&gps_prev, &gps_sample);
+							float bearing_move_rad = (bearing_move_deg * M_PI) / 180.0f;
+							float desired_deg = calculate_bearing(&gps_sample, estacionTerrena);
+							float desired_rad = (desired_deg * M_PI) / 180.0f;
+							// error desired - measured en [-pi,pi]
+							float err = desired_rad - bearing_move_rad;
+							while (err > M_PI) err -= 2.0f*M_PI;
+							while (err < -M_PI) err += 2.0f*M_PI;
+							float abs_err = fabsf(err);
+
+							if (!gps_fix_active) {
+								if (abs_err > GPS_HEADING_ON_RAD) {
+									gps_bad_count++;
+									if (gps_bad_count >= GPS_DEBOUNCE_COUNT) {
+										gps_fix_active = true;
+										gps_fix_start = HAL_GetTick();
+										gps_bad_count = 0;
+										// enviar petición de giro
+										ControlCommand_t fix_cmd = {0};
+										fix_cmd.mode = MODE_POSE_GIRO;
+										fix_cmd.target_theta = desired_rad;
+										osMessageQueuePut(controlDataQueueHandle, &fix_cmd, 0, 10);
+									}
+								}
+								else {
+									gps_bad_count = 0;
+								}
+							} else {
+								// ya en fix: comprobar si se corrigió o timeout
+								if (abs_err < GPS_HEADING_OFF_RAD) {
+									gps_fix_active = false;
+								} else if ((HAL_GetTick() - gps_fix_start) > GPS_GIRO_TIMEOUT_MS) {
+									gps_fix_active = false;
+									gps_bad_count = 0;
+								}
+							}
+						}
+					}
+					memcpy(&gps_prev, &gps_sample, sizeof(GPS_Data_t));
+					gps_prev_valid = true;
+				}
+			}
+		}
+
+	/*	//medir stakkk
+
+		uint32_t free_words = osThreadGetStackSpace(osThreadGetId()); // stack libre en "words" (4 bytes)
+		uint32_t free_bytes = free_words * sizeof(uint32_t);
+
+		printf("Stack libre (min): %lu words = %lu bytes\r\n", free_words, free_bytes);
+*/
+//		Serial_PrintString("  NavTaquito en ejecucion...  ");
+		osDelay(500);
+
 	}
 }

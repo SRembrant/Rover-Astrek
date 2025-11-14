@@ -433,6 +433,7 @@ void Navegacion_Global(void *argument)
 void ControlTask(void *argument)
 {
 
+
     // ===== INICIALIZACIÓN =====
     osDelay(500);  // ← AÑADIDO: Esperar a que otras tareas inicialicen
 
@@ -444,6 +445,15 @@ void ControlTask(void *argument)
         // Mensaje de inicio SIN bloqueo
         HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Inicializado\r\n", 24, 100);
     }
+
+
+	typedef enum { CTRL_IDLE=0, CTRL_ROTATING } ControlState_t;
+	ControlState_t ctrl_state = CTRL_IDLE;
+	float rotate_target_theta = 0.0f; // radians
+	float rotate_wz_cmd = 0.35f; // nominal angular speed
+	uint32_t rotate_start_tick = 0;
+	uint32_t rotate_timeout_ms = 15000; // safety timeout
+	const float ROT_STOP_THRESH = 0.08f; // rad ~4.5deg
 
     // Variables locales
    // static float sim_x = 0.0f;
