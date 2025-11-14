@@ -433,10 +433,92 @@ void Navegacion_Global(void *argument)
 void ControlTask(void *argument)
 {
 	/* USER CODE BEGIN ControlTask */
-	/* Infinite loop */
+	/* Non-blocking ControlTask loop with rotation state machine */
+	typedef enum { CTRL_IDLE=0, CTRL_ROTATING } ControlState_t;
+	ControlState_t ctrl_state = CTRL_IDLE;
+	float rotate_target_theta = 0.0f; // radians
+	float rotate_wz_cmd = 0.35f; // nominal angular speed
+	uint32_t rotate_start_tick = 0;
+	uint32_t rotate_timeout_ms = 15000; // safety timeout
+	const float ROT_STOP_THRESH = 0.08f; // rad ~4.5deg
+
 	for(;;)
 	{
-		osDelay(1);
+		ControlCommand_t cmd;
+		// Wait briefly for new commands but continue loop even if none
+		if (osMessageQueueGet(controlDataQueueHandle, &cmd, NULL, 50) == osOK) {
+			// If a new pose giro arrives, (re)start rotation
+			if (cmd.mode == MODE_POSE_GIRO) {
+				rotate_target_theta = cmd.target_theta;
+				// start rotation state
+				ctrl_state = CTRL_ROTATING;
+				rotate_start_tick = HAL_GetTick();
+
+				// apply initial rotation PWM according to direction
+				// determine sign via IMU if available
+				float imu_h = 0.0f; bool imu_ok = false;
+				if (IMU_Data.mag_x != 0.0f || IMU_Data.mag_y != 0.0f) {
+					imu_h = atan2f(IMU_Data.mag_y, IMU_Data.mag_x);
+					imu_ok = true;
+				}
+				float angle_to_turn = rotate_target_theta;
+				if (imu_ok) {
+					float diff = rotate_target_theta - imu_h;
+					while (diff > M_PI) diff -= 2.0f*M_PI;
+					while (diff < -M_PI) diff += 2.0f*M_PI;
+					angle_to_turn = diff;
+				}
+				float wz_cmd = (angle_to_turn > 0) ? rotate_wz_cmd : -rotate_wz_cmd;
+				WheelVelocities_t wheels = Kinematics_Inverse(0.0f, wz_cmd);
+				PWM_Commands_t pwm = PWM_FromWheelVelocities(wheels, &pwm_compensation);
+				Rover_SetPWM_Differential(&Rover, pwm);
+			}
+			else if (cmd.mode == MODE_WALL_FOLLOW) {
+				// Only apply wall follow if not currently doing a rotation
+				if (ctrl_state == CTRL_IDLE) {
+					WheelVelocities_t wheels = Kinematics_Inverse(cmd.target_vx, cmd.target_wz);
+					PWM_Commands_t pwm = PWM_FromWheelVelocities(wheels, &pwm_compensation);
+					Rover_SetPWM_Differential(&Rover, pwm);
+				}
+			}
+			else {
+				// other modes currently ignored here
+			}
+		}
+
+		// State machine: if rotating, check termination conditions non-blocking
+		if (ctrl_state == CTRL_ROTATING) {
+			bool done = false;
+			// 1) Prefer IMU for heading check
+			if (IMU_Data.mag_x != 0.0f || IMU_Data.mag_y != 0.0f) {
+				float imu_h = atan2f(IMU_Data.mag_y, IMU_Data.mag_x);
+				float diff = rotate_target_theta - imu_h;
+				while (diff > M_PI) diff -= 2.0f*M_PI;
+				while (diff < -M_PI) diff += 2.0f*M_PI;
+				if (fabsf(diff) < ROT_STOP_THRESH) done = true;
+			} else {
+				// 2) Fallback: use timeout estimate; stop if exceeded
+				uint32_t now = HAL_GetTick();
+				if ((now - rotate_start_tick) > rotate_timeout_ms) done = true;
+			}
+
+			// 3) Safety: check frontal ultrasonic quickly
+			HCSR04_Data_t hcsr;
+			if (osMessageQueueGet(hcsr04DataQueueHandle, &hcsr, NULL, 0) == osOK) {
+				if (hcsr.is_valid && hcsr.distance_cm < 15.0f) {
+					// obstacle too close: stop rotation
+					done = true;
+				}
+			}
+
+			if (done) {
+				PWM_Commands_t stop = {0};
+				Rover_SetPWM_Differential(&Rover, stop);
+				ctrl_state = CTRL_IDLE;
+			}
+		}
+		// small sleep to yield
+		osDelay(10);
 	}
 	/* USER CODE END ControlTask */
 }
