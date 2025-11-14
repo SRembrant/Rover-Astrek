@@ -330,13 +330,13 @@ void MX_FREERTOS_Init(void) {
 
 	/* Create the thread(s) */
 	/* creation of Navegacion */
-	NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
+	//NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
 
 	/* creation of Taquito */
 	TaquitoHandle = osThreadNew(TaquitoTask, NULL, &Taquito_attributes);
 
 	/* creation of NavGlobal */
-	NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
+	//NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
 
 	/* creation of Control */
 	ControlHandle = osThreadNew(ControlTask, NULL, &Control_attributes);
@@ -457,6 +457,8 @@ void ControlTask(void *argument)
     osStatus_t status;
 
     // Variables de trabajo para el control
+    float current_x = 0.0f;
+    float current_y = 0.0f;
 	float vx_cmd = 0.0f;
 	float wz_cmd = 0.0f;
 
@@ -476,46 +478,77 @@ void ControlTask(void *argument)
 
 		// 3. Obtener orientación (temporalmente de GPS course)
 		float theta_actual = deg2rad(gps_data.course);
-        // ----- SIMULACIÓN GPS -----
-     /*   if (!target_set) {
-            PoseController_SetTarget(&pose_controller, 0.0f, 2.0f);  // ← Target más cercano (2m)
-            target_set = 1;
-            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target: (0.0, 2.0)\r\n", 31, 100);
-        }
-
-        // Simular movimiento
-        sim_x += pose_controller.vx_cmd * cosf(sim_theta) * POSE_CONTROL_DT;
-        sim_y += pose_controller.vx_cmd * sinf(sim_theta) * POSE_CONTROL_DT;
-        sim_theta += pose_controller.wz_cmd * POSE_CONTROL_DT;
-        sim_theta = normalize_angle(sim_theta); */
 
         // ----- ACTUALIZAR CONTROLADOR -----
-        PoseController_Update(&pose_controller, sim_x, sim_y, sim_theta);
+        PoseController_Update(&pose_controller, pos_actual.x, pos_actual.y, theta_actual);
 
         // ----- VERIFICAR SI LLEGAMOS -----
         if (pose_controller.target_reached) {
             PWM_Commands_t stop_cmd = {0, 0, 0, 0};
             Rover_SetPWM_Differential(&Rover, stop_cmd);
 
-            HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target alcanzado!\r\n", 30, 100);
-
-            // Resetear posición simulada para nueva prueba
-            sim_x = 0.0f;
-            sim_y = 0.0f;
-            sim_theta = 0.0f;
+            //HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target alcanzado!\r\n", 30, 100);
 
             // Resetear controlador
             PoseController_Reset(&pose_controller);
 
             target_set = 0;
             osDelay(2000);
+
             continue;
         }
 
+
+        // 4. SELECCIÓN DE LÓGICA DE CONTROL BASADA EN EL MODO
+       		switch (cmd.mode)
+       		{
+       			case MODE_WALL_FOLLOW: //control PID para el seguimiento de pared
+       				// Taquito ya calculó el PID lateral y dio el vx y wz (corrección)
+       				vx_cmd = cmd.target_vx;
+       				wz_cmd = cmd.target_wz;
+
+       				// Resetear el PID de pose (para que no interfiera)
+       				PoseController_Reset(&pose_controller);
+       				break;
+
+       			case MODE_POSE_GIRO: //pendiente de ajustar, es para los giros de 90°
+       				// Giro de 90 grados:
+       				// 1. Usamos el PID angular de PoseController
+       				PoseController_Update_Theta(&pose_controller,
+       											pos_actual.theta,
+       											cmd.target_theta);
+
+       				// 2. Tomamos el wz del controlador angular y forzamos vx=0
+       				vx_cmd = 0.0f;
+       				wz_cmd = pose_controller.wz_cmd;
+
+       				// Lógica de finalización (debe estar aquí o en PoseController_Update_Theta)
+       				// if (fabsf(theta_actual - cmd.target_theta) < THETA_TOLERANCE) {
+       				//     // Notificar a Taquito y cambiar el modo de control.
+       				// }
+       				break;
+
+       			case MODE_POSE_TARGET: //la logica que ya se tenia, avanza hacia un target x,y
+       				// Comportamiento de control de pose original (ir a X, Y)
+       				PoseController_Update(&pose_controller,
+       									 pos_actual.x, pos_actual.y, theta_actual,
+       									 cmd.target_x, cmd.target_y); // Usar targets del comando
+
+       				vx_cmd = pose_controller.vx_cmd;
+       				wz_cmd = pose_controller.wz_cmd;
+       				break;
+
+       			case MODE_FORWARD:
+       				//avance "en bruto" desde taquito
+       				vx_cmd = cmd.target_vx;
+       				wz_cmd = cmd.target_wz;
+       				break;
+       		}
+
         // ----- CINEMÁTICA Y PWM -----
         WheelVelocities_t wheel_velocities = Kinematics_Inverse(
-            pose_controller.vx_cmd,
-            pose_controller.wz_cmd
+            vx_cmd,
+            wz_cmd
         );
 
         PWM_Commands_t pwm_commands = PWM_FromWheelVelocities(

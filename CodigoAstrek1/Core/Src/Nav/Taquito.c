@@ -443,15 +443,5 @@ void navTaquito_task(void *argument){
 				}
 			}
 		}
-
-	/*	//medir stakkk
-
-		uint32_t free_words = osThreadGetStackSpace(osThreadGetId()); // stack libre en "words" (4 bytes)
-		uint32_t free_bytes = free_words * sizeof(uint32_t);
-
-		printf("Stack libre (min): %lu words = %lu bytes\r\n", free_words, free_bytes);
-*/
-//		Serial_PrintString("  NavTaquito en ejecucion...  ");
-		osDelay(500);
 	}
 }

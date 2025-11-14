@@ -33,11 +33,9 @@ typedef struct {
 typedef enum {
     MODE_POSE_TARGET,   // Ir a un (X, Y) fijo (comportamiento actual en ControlTask)
     MODE_WALL_FOLLOW,   // Moverse con vx y corrección wz (Nuevo modo para Taquito)
-    MODE_POSE_GIRO      // Giro de 90 grados (Theta Target)
+    MODE_POSE_GIRO,      // Giro de 90 grados (Theta Target)
+	MODE_FORWARD // para avances pequeños despues de un caso de esquna
 } Rover_Control_Mode_t;
-
-
-
 
 //Funciones a usar
 void Rover_Init(Rover_Config *Rover); //Inicializa el movimiento del Rover
