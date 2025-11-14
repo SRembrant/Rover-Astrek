@@ -125,6 +125,7 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI2_Init();
   MX_FATFS_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 	//I2C_Scanner();
 	AllInit();
@@ -247,6 +248,7 @@ void AllInit(void){ // COLOCAR LOS QUE SON BRRRRRRRRRRR
 	Serial_Init(&huart1);
 
 	init_navegacion();
+	HAL_Delay(5000);
 }
 
 

@@ -1,0 +1,2 @@
+../Core/Src/Actuadores/servos.c:9:6:Servo_Init	1
+../Core/Src/Actuadores/servos.c:15:6:Servo_SetAngle	6
