@@ -7,6 +7,8 @@
 #include "LoRa_RYLR998.h"
 #include "cmsis_os.h"
 
+extern osSemaphoreId_t serialSemaphoreHandle;
+
 HAL_StatusTypeDef LoRa_Init(LoRa_t *lora, UART_HandleTypeDef *huart) {
 	lora->huart = huart;
 	memset(lora->buffer, 0, sizeof(lora->buffer));
@@ -23,13 +25,26 @@ HAL_StatusTypeDef LoRa_ReadResponse(LoRa_t *lora, uint32_t timeout) {
 }
 
 HAL_StatusTypeDef LoRa_SendString(LoRa_t *lora, const char *data) {
-	char cmd[160];
-	snprintf(cmd, sizeof(cmd), "AT+SEND=0,%d,%s\n\r", (int)strlen(data), data);
+	// Nota: static ahorra pila, buena práctica para RTOS
+	static char cmd[256];
 
-	// Transmitimos (esto sigue siendo un bloqueo, pero es corto)
-	HAL_StatusTypeDef status = HAL_UART_Transmit(lora->huart, (uint8_t*)cmd, sizeof(cmd), 200 );
+	// 1. Pedir la llave
+	if (osSemaphoreAcquire(serialSemaphoreHandle, 1000) != osOK) {
+		return HAL_BUSY; // UART ocupado por otra tarea (ej. SD)
+	}
 
-	// No esperamos la respuesta "+OK". Asumimos que funcionó.
+	// 2. Sección Crítica (Nadie más puede usar el UART aquí)
+	snprintf(cmd, sizeof(cmd), "AT+SEND=0,%d,%s\r\n", (int)strlen(data), data);
+
+	// Enviamos (Bloqueante por 200ms está bien si tenemos el semáforo)
+	HAL_StatusTypeDef status = HAL_UART_Transmit(lora->huart, (uint8_t*)cmd, strlen(cmd), 200);
+
+	// (Opcional) Si necesitas leer respuesta, hazlo aquí antes de soltar
+	// LoRa_ReadResponse(lora, 200);
+
+	// 3. Devolver la llave
+	osSemaphoreRelease(serialSemaphoreHandle);
+
 	return status;
 }
 
@@ -59,5 +74,10 @@ HAL_StatusTypeDef LoRa_Setup(LoRa_t *lora, const char *addr, const char *netid, 
 	return HAL_OK;
 }
 
-
+static void Send_AT_Command_Protected(UART_HandleTypeDef *huart, char *cmd) {
+    if (osSemaphoreAcquire(serialSemaphoreHandle, 1000) == osOK) {
+        HAL_UART_Transmit(huart, (uint8_t*)cmd, strlen(cmd), 100);
+        osSemaphoreRelease(serialSemaphoreHandle);
+    }
+}
 

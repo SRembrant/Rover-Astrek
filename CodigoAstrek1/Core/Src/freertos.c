@@ -37,6 +37,7 @@
 #include "Control_Pose.h"
 #include "Control_Kinematics.h"
 #include "Control_PWM.h"
+#include "servos.h"
 
 #include "Sensors_I2C.h"
 #include "LoRa_RYLR998.h"
@@ -50,11 +51,14 @@ extern Rover_Config Rover;
 extern HCSR04_Config_t hcsr04_config;
 extern GPS_Config_t gps_config;
 extern MPU9250_Data IMU_Data;
+volatile float g_current_lux = 0.0f;
+extern TIM_HandleTypeDef htim2;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define LUX_THRESHOLD_OPEN  500.0f // Abrir si hay más luz que esto
+#define LUX_HYSTERESIS      50.0f  // Margen para evitar rebotes
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,67 +78,77 @@ static PoseController_t pose_controller;
 static PWM_Compensation_t pwm_compensation;
 static uint8_t control_initialized = 0;
 
+Servo_Handle_t hServoDiag1; // Par 1 (ej. FR + BL)
+Servo_Handle_t hServoDiag2; // Par 2 (ej. FL + BR)
+
 /* USER CODE END Variables */
 /* Definitions for Navegacion */
 osThreadId_t NavegacionHandle;
 const osThreadAttr_t Navegacion_attributes = {
 		.name = "Navegacion",
-		.stack_size = 144 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityAboveNormal,
 };
 /* Definitions for Taquito */
 osThreadId_t TaquitoHandle;
 const osThreadAttr_t Taquito_attributes = {
 		.name = "Taquito",
-		.stack_size = 311 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for NavGlobal */
 osThreadId_t NavGlobalHandle;
 const osThreadAttr_t NavGlobal_attributes = {
 		.name = "NavGlobal",
-		.stack_size = 323 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityBelowNormal1,
 };
 /* Definitions for Control */
 osThreadId_t ControlHandle;
 const osThreadAttr_t Control_attributes = {
 		.name = "Control",
-		.stack_size = 128 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityRealtime,
 };
 /* Definitions for Ultrasonido */
 osThreadId_t UltrasonidoHandle;
 const osThreadAttr_t Ultrasonido_attributes = {
 		.name = "Ultrasonido",
-		.stack_size = 210 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityBelowNormal2,
 };
 /* Definitions for Geoposicion */
 osThreadId_t GeoposicionHandle;
 const osThreadAttr_t Geoposicion_attributes = {
 		.name = "Geoposicion",
-		.stack_size = 210 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for Transmision */
 osThreadId_t TransmisionHandle;
 const osThreadAttr_t Transmision_attributes = {
 		.name = "Transmision",
-		.stack_size = 512 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityLow1,
 };
 /* Definitions for Sensores_I2C */
 osThreadId_t Sensores_I2CHandle;
 const osThreadAttr_t Sensores_I2C_attributes = {
 		.name = "Sensores_I2C",
-		.stack_size = 256 * 4,
+		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityBelowNormal,
 };
 /* Definitions for logTask */
 osThreadId_t logTaskHandle;
 const osThreadAttr_t logTask_attributes = {
 		.name = "logTask",
+		.stack_size = 2048 * 4,
+		.priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for Servos */
+osThreadId_t ServosHandle;
+const osThreadAttr_t Servos_attributes = {
+		.name = "Servos",
 		.stack_size = 1024 * 4,
 		.priority = (osPriority_t) osPriorityLow,
 };
@@ -255,6 +269,7 @@ void GPSTask(void *argument);
 void TransmisionTask(void *argument);
 void SensoresTask(void *argument);
 void Datos_SD(void *argument);
+void PatasRoverTask(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -340,6 +355,9 @@ void MX_FREERTOS_Init(void) {
 
 	/* creation of logTask */
 	logTaskHandle = osThreadNew(Datos_SD, NULL, &logTask_attributes);
+
+	/* creation of Servos */
+	ServosHandle = osThreadNew(PatasRoverTask, NULL, &Servos_attributes);
 
 	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
@@ -514,14 +532,17 @@ void TransmisionTask(void *argument)
 	// La estructura que rellenaremos y enviaremos al logger
 	Datalog_Entry_t current_log_entry = {0};
 	char msg[128];
+	osDelay(1000); // Espera inicial
+	LoRa_Init(&lora_module, &huart1);
+	LoRa_Setup(&lora_module,
+			"1",  // Dirección del dispositivo
+			"18", // ID de Red
+			"915000000"); // Banda (ej. 915 MHz)
+
 	/* Infinite loop */
 	for(;;)
 	{
-		LoRa_Init(&lora_module, &huart1);
-		LoRa_Setup(&lora_module,
-				"1",  // Dirección del dispositivo
-				"18", // ID de Red
-				"915000000"); // Banda (ej. 915 MHz)
+
 
 		// 1. Esperar por datos de los sensores I2C (cada 2 seg)
 		if (osMessageQueueGet(sensorDataQueueHandle, &i2c_data, NULL, osWaitForever) == osOK)
@@ -604,6 +625,10 @@ void SensoresTask(void *argument)
 		MPU6050_Read(&hsensors);
 		LTR390_Read(&hsensors);
 
+		portENTER_CRITICAL();
+		g_current_lux = hsensors.data.light;
+		portEXIT_CRITICAL();
+
 		osMessageQueuePut(sensorDataQueueHandle, &hsensors, 0, 0);
 		osDelay(200);
 
@@ -624,28 +649,74 @@ void Datos_SD(void *argument)
 	/* USER CODE BEGIN Datos_SD */
 	Datalog_Entry_t log_entry;
 	Datalogger_t datalogger;
-
+	char cmd[256];
+	snprintf(cmd, sizeof(cmd), "Tarea SD Inicializada\r\n");
+	Serial_PrintString(cmd);
+	osDelay(2000);
+	snprintf(cmd, sizeof(cmd), "[SD] Intentando montar...\r\n");
+	Serial_PrintString(cmd);
 	// 1. Inicializar el Datalogger
 	// Esperamos un poco para que la SD se estabilice
 	osDelay(2000);
 	if (Datalogger_Init(&datalogger, "LOG_001.BIN") != HAL_OK) {
 		// Error: No se pudo montar la SD.
-		// Aquí podrías encender un LED de error.
-		osThreadTerminate(NULL); // Terminar la tarea
+
+		snprintf(cmd, sizeof(cmd), "[SD] FALLO al montar\r\n");
+		Serial_PrintString(cmd);
+		//osThreadTerminate(NULL); // Terminar la tarea
+	}
+	else
+	{
+		snprintf(cmd, sizeof(cmd), "[SD] Montaje EXITOSO\r\n");
+		Serial_PrintString(cmd);
 	}
 	/* Infinite loop */
 	for(;;)
 	{
+		log_entry.eco2 = 10;
+		log_entry.gps_fix= 11;
+		log_entry.humidity = 12;
+		log_entry.latitude = 13;
+		log_entry.light = 14;
+		log_entry.longitude = 15;
+		log_entry.temperature = 16;
+		log_entry.timestamp = 17;
+		log_entry.tvoc= 18;
+
+		Datalogger_LogEntry(&datalogger, &log_entry);
 		// 2. Esperar (bloquearse) hasta que lleguen datos a la cola de log
+		/*
 		if (osMessageQueueGet(logQueueHandle, &log_entry, NULL, osWaitForever) == osOK)
 		{
 			// 3. Escribir los datos en la SD
-			Datalogger_LogEntry(&datalogger, &log_entry);
+			/Datalogger_LogEntry(&datalogger, &log_entry);
 			// La tarea se bloqueará en f_sync() (dentro de LogEntry),
 			// lo cual es perfecto para una tarea de baja prioridad.
 		}
-		/* USER CODE END Datos_SD */
+		 */
+		osDelay(1000);
 	}
+	/* USER CODE END Datos_SD */
+}
+
+/* USER CODE BEGIN Header_PatasRoverTask */
+/**
+ * @brief Function implementing the Servos thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_PatasRoverTask */
+void PatasRoverTask(void *argument)
+{
+	/* USER CODE BEGIN PatasRoverTask */
+	Servo_Init(&hServoDiag1, &htim4, TIM_CHANNEL_1);
+	Servo_Init(&hServoDiag2, &htim4, TIM_CHANNEL_2);
+	/* Infinite loop */
+	for(;;)
+	{
+		osDelay(1);
+	}
+	/* USER CODE END PatasRoverTask */
 }
 
 /* Private application code --------------------------------------------------*/

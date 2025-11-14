@@ -3,6 +3,7 @@
 "./Core/Src/Actuadores/Control_Pose.o"
 "./Core/Src/Actuadores/Control_Rover.o"
 "./Core/Src/Actuadores/Motor.o"
+"./Core/Src/Actuadores/servos.o"
 "./Core/Src/Herramientas/HashMap.o"
 "./Core/Src/Herramientas/Lista.o"
 "./Core/Src/Herramientas/Nodo.o"

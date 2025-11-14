@@ -9,21 +9,24 @@ C_SRCS += \
 ../Core/Src/Actuadores/Control_PWM.c \
 ../Core/Src/Actuadores/Control_Pose.c \
 ../Core/Src/Actuadores/Control_Rover.c \
-../Core/Src/Actuadores/Motor.c 
+../Core/Src/Actuadores/Motor.c \
+../Core/Src/Actuadores/servos.c 
 
 OBJS += \
 ./Core/Src/Actuadores/Control_Kinematics.o \
 ./Core/Src/Actuadores/Control_PWM.o \
 ./Core/Src/Actuadores/Control_Pose.o \
 ./Core/Src/Actuadores/Control_Rover.o \
-./Core/Src/Actuadores/Motor.o 
+./Core/Src/Actuadores/Motor.o \
+./Core/Src/Actuadores/servos.o 
 
 C_DEPS += \
 ./Core/Src/Actuadores/Control_Kinematics.d \
 ./Core/Src/Actuadores/Control_PWM.d \
 ./Core/Src/Actuadores/Control_Pose.d \
 ./Core/Src/Actuadores/Control_Rover.d \
-./Core/Src/Actuadores/Motor.d 
+./Core/Src/Actuadores/Motor.d \
+./Core/Src/Actuadores/servos.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -33,7 +36,7 @@ Core/Src/Actuadores/%.o Core/Src/Actuadores/%.su Core/Src/Actuadores/%.cyclo: ..
 clean: clean-Core-2f-Src-2f-Actuadores
 
 clean-Core-2f-Src-2f-Actuadores:
-	-$(RM) ./Core/Src/Actuadores/Control_Kinematics.cyclo ./Core/Src/Actuadores/Control_Kinematics.d ./Core/Src/Actuadores/Control_Kinematics.o ./Core/Src/Actuadores/Control_Kinematics.su ./Core/Src/Actuadores/Control_PWM.cyclo ./Core/Src/Actuadores/Control_PWM.d ./Core/Src/Actuadores/Control_PWM.o ./Core/Src/Actuadores/Control_PWM.su ./Core/Src/Actuadores/Control_Pose.cyclo ./Core/Src/Actuadores/Control_Pose.d ./Core/Src/Actuadores/Control_Pose.o ./Core/Src/Actuadores/Control_Pose.su ./Core/Src/Actuadores/Control_Rover.cyclo ./Core/Src/Actuadores/Control_Rover.d ./Core/Src/Actuadores/Control_Rover.o ./Core/Src/Actuadores/Control_Rover.su ./Core/Src/Actuadores/Motor.cyclo ./Core/Src/Actuadores/Motor.d ./Core/Src/Actuadores/Motor.o ./Core/Src/Actuadores/Motor.su
+	-$(RM) ./Core/Src/Actuadores/Control_Kinematics.cyclo ./Core/Src/Actuadores/Control_Kinematics.d ./Core/Src/Actuadores/Control_Kinematics.o ./Core/Src/Actuadores/Control_Kinematics.su ./Core/Src/Actuadores/Control_PWM.cyclo ./Core/Src/Actuadores/Control_PWM.d ./Core/Src/Actuadores/Control_PWM.o ./Core/Src/Actuadores/Control_PWM.su ./Core/Src/Actuadores/Control_Pose.cyclo ./Core/Src/Actuadores/Control_Pose.d ./Core/Src/Actuadores/Control_Pose.o ./Core/Src/Actuadores/Control_Pose.su ./Core/Src/Actuadores/Control_Rover.cyclo ./Core/Src/Actuadores/Control_Rover.d ./Core/Src/Actuadores/Control_Rover.o ./Core/Src/Actuadores/Control_Rover.su ./Core/Src/Actuadores/Motor.cyclo ./Core/Src/Actuadores/Motor.d ./Core/Src/Actuadores/Motor.o ./Core/Src/Actuadores/Motor.su ./Core/Src/Actuadores/servos.cyclo ./Core/Src/Actuadores/servos.d ./Core/Src/Actuadores/servos.o ./Core/Src/Actuadores/servos.su
 
 .PHONY: clean-Core-2f-Src-2f-Actuadores
 
