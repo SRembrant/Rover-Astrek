@@ -103,11 +103,12 @@ void Serial_PrintIMUData(MPU9250_Data* data) {
  */
 void Serial_PrintString(const char* str) {
     // Esperar por el semáforo (bloqueo hasta que la transmisión anterior termine)
-   // if (osSemaphoreAcquire(serialSemaphoreHandle, 500) == osOK) {
+    if (osSemaphoreAcquire(serialSemaphoreHandle, 1000) == osOK) {
         // Enviar por DMA
-        HAL_UART_Transmit(huart_serial, (uint8_t*)str, strlen(str),500);
+        HAL_UART_Transmit(huart_serial, (uint8_t*)str, strlen(str),100);
         // El semáforo se libera en el callback de transmisión completa
-    //}
+        osSemaphoreRelease(serialSemaphoreHandle);
+    }
 }
 
 /**

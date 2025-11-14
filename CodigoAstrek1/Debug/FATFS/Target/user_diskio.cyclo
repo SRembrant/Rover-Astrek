@@ -1,0 +1,12 @@
+../FATFS/Target/user_diskio.c:76:13:xchg_spi	2
+../FATFS/Target/user_diskio.c:85:12:wait_ready	3
+../FATFS/Target/user_diskio.c:96:13:deselect	1
+../FATFS/Target/user_diskio.c:101:12:select	2
+../FATFS/Target/user_diskio.c:110:12:rcvr_datablock	5
+../FATFS/Target/user_diskio.c:129:12:xmit_datablock	5
+../FATFS/Target/user_diskio.c:146:13:send_cmd	9
+../FATFS/Target/user_diskio.c:211:9:USER_initialize	15
+../FATFS/Target/user_diskio.c:281:9:USER_status	1
+../FATFS/Target/user_diskio.c:299:9:USER_read	11
+../FATFS/Target/user_diskio.c:340:9:USER_write	14
+../FATFS/Target/user_diskio.c:384:9:USER_ioctl	12

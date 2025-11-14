@@ -1,0 +1,3 @@
+../Core/Src/Transmision/datalogger.c:17:19:Datalogger_Init	3
+../Core/Src/Transmision/datalogger.c:48:19:Datalogger_LogEntry	5
+../Core/Src/Transmision/datalogger.c:77:6:Datalogger_Close	2
