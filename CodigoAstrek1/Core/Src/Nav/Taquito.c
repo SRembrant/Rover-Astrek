@@ -87,43 +87,6 @@ static float ajustarPared(int8_t direccion, float disLateral_cm){
 
 
 /**
- * @brief Calcula la distancia perpendicular desde un punto actual a una recta definida por dos puntos GPS.
- *
- * La recta está definida por los puntos 'origen' y 'estacionTerrena', y se calcula en un sistema cartesiano
- * local obtenido mediante proyección plana desde coordenadas GPS.
- *
- * @param posActual Puntero a la estructura GPS_Data que representa la posición actual del rover.
- * @param origen Puntero a la estructura GPS_Data que se toma como origen del sistema cartesiano local.
- * @param estacionTerrena Puntero a la estructura GPS_Data que define un punto en la recta objetivo.
- *
- * @return La distancia en metros desde la posición actual a la recta.
- */
-/*
-static float distanciaARecta(GPS_Data_t * posActual, GPS_Data_t * origen, GPS_Data_t * estacionTerrena){
-	//declaracion de variables
-	float a, b, c, numerador, denominador, distancia;
-	P_Cartesiano coordPosActual, coordEstTerrena, coordOrigen;
-
-	//tranformamos de coordenagas GPS a coordenadas Cartesianas
-	coordEstTerrena = gpsACartesiano(origen, estacionTerrena);
-	coordPosActual = gpsACartesiano(origen, posActual);
-	coordOrigen = gpsACartesiano(origen, origen);
-
-	//calculamos los coeficientes de la recta
-	a = coordEstTerrena.y - coordOrigen.y;         // a = Δy
-	b = coordOrigen.x - coordEstTerrena.x;         // b = -Δx
-	c = -( (a) * coordOrigen.x + (b) * coordOrigen.y);  // c = -(a·x1 + b·y1)
-
-	//calculamos la distancia desde la posicion actual a la recta
-	numerador=fabs(a * coordPosActual.x + b * coordPosActual.y + c);
-	denominador = sqrtf(a*a+b*b);
-
-	distancia = numerador/denominador;
-	return distancia; //distancia en metros
-}
-*/
-
-/**
  * @brief determina si se ha cruzado la linea recta que pasa entre la estacion terrena y el lugar donde empezo a ejecutarse taquito
  * @param posActual es la posicion actual del rover
  * @param origen es la posicion GPS donde se empezo a ejecutar taquito
@@ -169,15 +132,15 @@ void navTaquito_task(void *argument){
 		static float  distRecta, disNodosTaq, disLateral;
 		static bool banderaCallejon = true;
 		static int8_t paredASeguir=-1, anteriorTaqID, contEsqExt=0;
-		static uint8_t iDNodoTaquito=0; //hacemos el cast para el id nodo taquito nuevo (deberia  ser un solo nodo y ya???????
+		static uint8_t iDNodoTaquito=0;
 		static estado estadoTaq = NUEVO_TAQUITO;
 
 		//varables de comunicacion
 	//	evento_navegacion evento;
 		static osStatus_t status;
 		static ControlCommand_t cmd;
-		static ultrasonico distancias; //ultrasonico es una estructura que guarda los 3 sensores. hablar esto con joad
-		//static HCSR04_Data_t received_ultrasonic_data; //-- variable de la prueba de comunicacion entre tareas, ultra-->taq,, Prueba 1. Despues reemplazar por la linea de arriba
+		static ultrasonico distancias; //ultrasonico es una estructura que guarda los 3 sensores.
+
 
 		//estructuras de datos
 		static Lista pilaNodosTaquito;
@@ -280,9 +243,9 @@ void navTaquito_task(void *argument){
 						contEsqExt = 0;
 						estadoTaq = CALLEJON_SIN_SALIDA;
 					}
-					else if(paredASeguir==-1 && ((distancias.derecho.distance_cm >= dist_suelo_estandar && distancias.derecho.distance_cm <= umbral_grieta)/*||(distancias.derecho <=umbral_grieta)*/ ))
+					else if(paredASeguir==-1 && ((distancias.derecho.distance_cm >= dist_suelo_estandar && distancias.derecho.distance_cm <= umbral_grieta)))
 						estadoTaq = ESQUINA_EXTERIOR;
-					else if (paredASeguir == 1 && ((distancias.izquierdo.distance_cm >= dist_suelo_estandar && distancias.izquierdo.distance_cm <= umbral_grieta)/*||(distancias.izquierdo <= umbral_grieta)*/))
+					else if (paredASeguir == 1 && ((distancias.izquierdo.distance_cm >= dist_suelo_estandar && distancias.izquierdo.distance_cm <= umbral_grieta)))
 						estadoTaq = ESQUINA_EXTERIOR;
 					else if(distancias.frontal.distance_cm <= umbral_pared || distancias.frontal.distance_cm >= umbral_grieta){
 						contEsqExt = 0;  //la contadora de esquinas exteriores vuelve a cero siempre que se ejecuten otros casos diferentes
@@ -307,21 +270,20 @@ void navTaquito_task(void *argument){
 						//Rover_Move(Rover, ROVER_FORWARD, 500);
 					}
 					break;
-
 				}
 				break;
 			case ESQUINA_INTERIOR:
 				if(paredASeguir==-1) {
 
-//					comunicacionControl_t.direccion = ROVER_LEFT;
-	///				comunicacionControl_t.velocidad = 500;
-		//			status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
 					//Rover_Move(Rover, ROVER_LEFT, 500); //AQUI nececito un giro de 90°
+					cmd.giro_dir=GIRO_ANTIHORARIO;
+					cmd.mode=MODE_POSE_GIRO;
+					status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 				}
 				else{
-	///				comunicacionControl_t.direccion = ROVER_RIGHT;
-		//			comunicacionControl_t.velocidad = 500;
-			//		status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+					cmd.giro_dir=GIRO_HORARIO;
+					cmd.mode=MODE_POSE_GIRO;
+					status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
 				//	Rover_Move(Rover, ROVER_RIGHT, 500); //AQUI necesito un giro de 90°
 				}
@@ -336,25 +298,25 @@ void navTaquito_task(void *argument){
 	//			status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
 				//Rover_Move(Rover, ROVER_STOP, 500);
 				if(paredASeguir == -1) {
-
-		//			comunicacionControl_t.direccion = ROVER_RIGHT;
-	//				comunicacionControl_t.velocidad = 500;
-	//				status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+					cmd.giro_dir=GIRO_HORARIO;
+					cmd.mode=MODE_POSE_GIRO;
+					status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
 				//	Rover_Move(Rover, ROVER_RIGHT, 500); //mirar como hace el movimiento, si sobre su eje central o como
 				}
 				else{
-	//				comunicacionControl_t.direccion = ROVER_LEFT;
-	//				comunicacionControl_t.velocidad = 500;
-	//				status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+					cmd.giro_dir=GIRO_ANTIHORARIO;
+					cmd.mode=MODE_POSE_GIRO;
+					status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
 				//	Rover_Move(Rover, ROVER_LEFT, 500);
 				}
 
 				//la idea es avanzar mas alla de dist_exterior_aceptable
-	//			comunicacionControl_t.direccion = ROVER_FORWARD;
-	//			comunicacionControl_t.velocidad = 600;
-	//			status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+				cmd.target_vx = WALL_FOLLOW_VX_BASE;
+				cmd.target_wz = 0.0f;
+				cmd.mode = MODE_FORWARD;
+				status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
 				//Rover_Move(Rover, ROVER_FORWARD, 600);
 				estadoTaq = SEGUIMIENTO_PARED;
@@ -365,40 +327,47 @@ void navTaquito_task(void *argument){
 				//moverse hacia atras hasta encontrar un sensor con lectura libre
 				banderaCallejon = false;
 
-	//			comunicacionControl_t.direccion = ROVER_BACKWARD;
-	//			comunicacionControl_t.velocidad = 300;
-	//			status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+				// pendiente de revision
+				cmd.target_vx = -WALL_FOLLOW_VX_BASE;
+				cmd.target_wz = 0.0f;
+				cmd.mode = MODE_FORWARD;
+				status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
 				// Rover_Move(Rover, ROVER_BACKWARD, 300); //--> aqui como es con el prametro velocidad???
 				if(paredASeguir==-1){ //si la pared a seguir es la derecha, debo revisar el sensor izquierdo
 					if(distancias.izquierdo.distance_cm > dist_exterior_aceptable){
 						banderaCallejon = true;
 
-	/*					comunicacionControl_t.direccion = ROVER_LEFT;
-						comunicacionControl_t.velocidad = 500;
-						status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
 						//Rover_Move(Rover, ROVER_LEFT, 500);
+						cmd.giro_dir=GIRO_ANTIHORARIO;
+						cmd.mode=MODE_POSE_GIRO;
+						status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 
-						comunicacionControl_t.direccion = ROVER_FORWARD;
-						comunicacionControl_t.velocidad = 500;
-						status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
-		*/				//Rover_Move(Rover, ROVER_FORWARD, 500);
+
+						//Rover_Move(Rover, ROVER_FORWARD, 500);
+						cmd.target_vx = WALL_FOLLOW_VX_BASE;
+						cmd.target_wz = 0.0f;
+						cmd.mode = MODE_FORWARD;
+						status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
+
 						estadoTaq = SEGUIMIENTO_PARED;
 					}
 				}else{
 					if(distancias.derecho.distance_cm > dist_exterior_aceptable) {
 						banderaCallejon = true;
 
-	/*					comunicacionControl_t.direccion = ROVER_RIGHT;
-						comunicacionControl_t.velocidad = 500;
-						status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+						cmd.giro_dir=GIRO_HORARIO;
+						cmd.mode=MODE_POSE_GIRO;
+						status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 						//Rover_Move(Rover, ROVER_RIGHT, 500);
 
-						comunicacionControl_t.direccion = ROVER_FORWARD;
-						comunicacionControl_t.velocidad = 500;
-						status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+						cmd.target_vx = WALL_FOLLOW_VX_BASE;
+						cmd.target_wz = 0.0f;
+						cmd.mode = MODE_FORWARD;
+						status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 						//Rover_Move(Rover, ROVER_FORWARD, 500);
-			*/			estadoTaq = SEGUIMIENTO_PARED;
+
+						estadoTaq = SEGUIMIENTO_PARED;
 					}
 				}
 				break;
@@ -408,9 +377,11 @@ void navTaquito_task(void *argument){
 
 				//si tiene espacio al frente, escapa
 				if(distancias.frontal.distance_cm >= umbral_pared && distancias.frontal.distance_cm <= umbral_grieta){
-			//		comunicacionControl_t.direccion = ROVER_FORWARD;
-			//		comunicacionControl_t.velocidad = 1000;
-			//		status = osMessageQueuePut(controlDataQueueHandle, &comunicacionControl_t, 0, 10);
+
+					cmd.target_vx = WALL_FOLLOW_VX_BASE;
+					cmd.target_wz = 0.0f;
+					cmd.mode = MODE_FORWARD;
+					status = osMessageQueuePut(controlDataQueueHandle, &cmd, 0, 10);
 					//Rover_Move(Rover, ROVER_FORWARD, 1000); //-----> enviar datos con la queue
 
 				}
@@ -510,16 +481,6 @@ void navTaquito_task(void *argument){
 				}
 			}
 		}
-
-	/*	//medir stakkk
-
-		uint32_t free_words = osThreadGetStackSpace(osThreadGetId()); // stack libre en "words" (4 bytes)
-		uint32_t free_bytes = free_words * sizeof(uint32_t);
-
-		printf("Stack libre (min): %lu words = %lu bytes\r\n", free_words, free_bytes);
-*/
-//		Serial_PrintString("  NavTaquito en ejecucion...  ");
 		osDelay(500);
-
 	}
 }

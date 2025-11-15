@@ -449,7 +449,7 @@ void ControlTask(void *argument)
     // ===== Variables persistentes para MODE_POSE_GIRO =====
     typedef enum { GYRO_IDLE = 0, GYRO_ROTATING } GyroState_t;
     static GyroState_t giro_state = GYRO_IDLE;
-
+    bool done;
     static uint32_t giro_start_tick = 0;
     static const uint32_t GIRO_TIMEOUT = 15000;
     static float yaw_integrado = 0.0f;     // integración del gyro
@@ -508,6 +508,7 @@ void ControlTask(void *argument)
 
 
         // 4. SELECCIÓN DE LÓGICA DE CONTROL BASADA EN EL MODO
+        	if(!done) cmd.mode=MODE_POSE_GIRO;
        		switch (cmd.mode)
        		{
        			case MODE_WALL_FOLLOW: //control PID para el seguimiento de pared
@@ -544,7 +545,7 @@ void ControlTask(void *argument)
        				    // ==========================================
        				    if (giro_state == GYRO_ROTATING)
        				    {
-       				        bool done = false;
+       				        done = false;
 
        				        // ----- Integrar gyro -----
        				        uint32_t now = HAL_GetTick();
@@ -597,8 +598,8 @@ void ControlTask(void *argument)
        			case MODE_POSE_TARGET: //la logica que ya se tenia, avanza hacia un target x,y
        				// Comportamiento de control de pose original (ir a X, Y)
        				PoseController_Update(&pose_controller,
-       									 pos_actual.x, pos_actual.y, theta_actual,
-       									 cmd.target_x, cmd.target_y); // Usar targets del comando
+       									 pos_actual.x, pos_actual.y, theta_actual
+       									 ); // Usar targets del comando
 
        				vx_cmd = pose_controller.vx_cmd;
        				wz_cmd = pose_controller.wz_cmd;
@@ -633,7 +634,7 @@ void ControlTask(void *argument)
             char telem[128];
             snprintf(telem, sizeof(telem),
                     "Pos:(%.2f,%.2f) Dist:%.2fm PWM:(%u,%u)\r\n",
-                    sim_x, sim_y,
+                    pos_actual.x, pos_actual.y,
                     pose_controller.distance_to_target,
                     pwm_commands.pwm_right, pwm_commands.pwm_left);
 
