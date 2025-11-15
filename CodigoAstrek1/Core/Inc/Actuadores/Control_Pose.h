@@ -96,7 +96,7 @@ typedef struct {
     float target_x;             // X objetivo (para Pose Target o Giro)
     float target_y;             // Y objetivo (para Pose Target o Giro)
     //GIROS ESTATICOS
-    float target_theta;         // Theta objetivo (para Giro de 90 grados)
+    Giro_dir_t giro_dir;         // Theta objetivo (para Giro de 90 grados)
 
 } ControlCommand_t;
 

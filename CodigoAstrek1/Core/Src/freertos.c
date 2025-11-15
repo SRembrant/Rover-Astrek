@@ -446,29 +446,27 @@ void ControlTask(void *argument)
         HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Inicializado\r\n", 24, 100);
     }
 
+    // ===== Variables persistentes para MODE_POSE_GIRO =====
+    typedef enum { GYRO_IDLE = 0, GYRO_ROTATING } GyroState_t;
+    static GyroState_t giro_state = GYRO_IDLE;
 
-	typedef enum { CTRL_IDLE=0, CTRL_ROTATING } ControlState_t;
-	ControlState_t ctrl_state = CTRL_IDLE;
-	float rotate_target_theta = 0.0f; // radians
-	float rotate_wz_cmd = 0.35f; // nominal angular speed
-	uint32_t rotate_start_tick = 0;
-	uint32_t rotate_timeout_ms = 15000; // safety timeout
-	const float ROT_STOP_THRESH = 0.08f; // rad ~4.5deg
+    static uint32_t giro_start_tick = 0;
+    static const uint32_t GIRO_TIMEOUT = 15000;
+    static float yaw_integrado = 0.0f;     // integración del gyro
+	static uint32_t last_tick = 0;         // para integrar dt
+	const float GIRO_WZ = 0.35f;           // velocidad angular de giro
+    const float GIRO_OBJ_RAD = 90.0f * M_PI / 180.0f;  // 90 grados
 
     // Variables locales
-   // static float sim_x = 0.0f;
-    //static float sim_y = 0.0f;
-    //static float sim_theta = 0.0f;
     static uint8_t target_set = 0;
     static uint16_t telemetry_counter = 0;
 
     GPS_Data_t gps_data;
     ControlCommand_t cmd;
     osStatus_t status;
+	Sensors_I2C_Handle_t hsensors = {0};
 
     // Variables de trabajo para el control
-    float current_x = 0.0f;
-    float current_y = 0.0f;
 	float vx_cmd = 0.0f;
 	float wz_cmd = 0.0f;
 
@@ -521,22 +519,80 @@ void ControlTask(void *argument)
        				PoseController_Reset(&pose_controller);
        				break;
 
-       			case MODE_POSE_GIRO: //pendiente de ajustar, es para los giros de 90°
-       				// Giro de 90 grados:
-       				// 1. Usamos el PID angular de PoseController
-       				PoseController_Update_Theta(&pose_controller,
-       											pos_actual.theta,
-       											cmd.target_theta);
+       			case MODE_POSE_GIRO:
 
-       				// 2. Tomamos el wz del controlador angular y forzamos vx=0
-       				vx_cmd = 0.0f;
-       				wz_cmd = pose_controller.wz_cmd;
+       				    // ============================================================
+       				    //  1) SI EL GIRO NO HA INICIADO --> inicializar integración
+       				    // ============================================================
+       				    if (giro_state == GYRO_IDLE)
+       				    {
+       				        yaw_integrado = 0.0f;
+       				        last_tick = HAL_GetTick();
+       				        giro_start_tick = last_tick;
 
-       				// Lógica de finalización (debe estar aquí o en PoseController_Update_Theta)
-       				// if (fabsf(theta_actual - cmd.target_theta) < THETA_TOLERANCE) {
-       				//     // Notificar a Taquito y cambiar el modo de control.
-       				// }
-       				break;
+       				        giro_state = GYRO_ROTATING;
+
+       				        // dirección de giro
+       				        vx_cmd = 0.0f;
+       				        wz_cmd = (cmd.giro_dir == GIRO_ANTIHORARIO) ? GIRO_WZ : -GIRO_WZ;
+
+       				        break; // salir del switch
+       				    }
+
+       				    // ==========================================
+       				    //       2) SI EL GIRO ESTÁ EN CURSO
+       				    // ==========================================
+       				    if (giro_state == GYRO_ROTATING)
+       				    {
+       				        bool done = false;
+
+       				        // ----- Integrar gyro -----
+       				        uint32_t now = HAL_GetTick();
+       				        float dt = (now - last_tick) / 1000.0f;  // convertir a segundos
+       				        last_tick = now;
+
+       				        // IMPORTANTE: gyro_z debe estar en rad/s
+       				        status = osMessageQueueGet(sensorDataQueueHandle, &hsensors, NULL, 0);
+       				     	if (status != osOK) continue;
+
+       				        float gyro_z = hsensors.data.gyro[3];   // Asegúrate: gz YA normalizado en rad/s dentro del driver
+
+       				        yaw_integrado += gyro_z * dt;
+
+       				        // ----- Verificar si ya alcanzó 90° -----
+       				        if (cmd.giro_dir == GIRO_ANTIHORARIO)
+       				        {
+       				            if (yaw_integrado >= GIRO_OBJ_RAD)
+       				                done = true;
+       				        }
+       				        else // GIRO_HORARIO
+       				        {
+       				            if (yaw_integrado <= -GIRO_OBJ_RAD)
+       				                done = true;
+       				        }
+
+       				        // ----- Timeout -----
+       				        if ((now - giro_start_tick) > GIRO_TIMEOUT)
+       				            done = true;
+
+       				        // ----- Si terminó el giro -----
+       				        if (done)
+       				        {
+       				            PWM_Commands_t stop = {0};
+       				            Rover_SetPWM_Differential(&Rover, stop);
+
+       				            giro_state = GYRO_IDLE;
+
+       				            PoseController_Reset(&pose_controller);
+       				            break;
+       				        }
+
+       				        // ----- Si NO ha terminado → seguir girando -----
+       				        vx_cmd = 0.0f;
+       				        wz_cmd = (cmd.giro_dir == GIRO_ANTIHORARIO) ? GIRO_WZ : -GIRO_WZ;
+       				        break;
+       				    }
+       				    break;
 
        			case MODE_POSE_TARGET: //la logica que ya se tenia, avanza hacia un target x,y
        				// Comportamiento de control de pose original (ir a X, Y)

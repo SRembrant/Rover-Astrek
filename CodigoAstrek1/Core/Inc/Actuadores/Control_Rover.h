@@ -37,6 +37,12 @@ typedef enum {
 	MODE_FORWARD // para avances pequeños despues de un caso de esquna
 } Rover_Control_Mode_t;
 
+//giros de 90 grados en taquito
+typedef enum {
+    GIRO_HORARIO =0,   // DERECHA
+    GIRO_ANTIHORARIO=1 // IZQUIERDAS
+} Giro_dir_t;
+
 //Funciones a usar
 void Rover_Init(Rover_Config *Rover); //Inicializa el movimiento del Rover
 void Rover_Move(Rover_Config *Rover, Rover_Direccion direccion, uint16_t velocidad,uint32_t tiempo );
