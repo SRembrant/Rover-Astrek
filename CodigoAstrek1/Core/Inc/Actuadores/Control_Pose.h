@@ -95,6 +95,7 @@ typedef struct {
     //WAYPOIINTS
     float target_x;             // X objetivo (para Pose Target o Giro)
     float target_y;             // Y objetivo (para Pose Target o Giro)
+    float target_theta;
     //GIROS ESTATICOS
     Giro_dir_t giro_dir;         // Theta objetivo (para Giro de 90 grados)
 
