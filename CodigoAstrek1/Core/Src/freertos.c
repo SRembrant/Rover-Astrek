@@ -6,7 +6,7 @@
  ******************************************************************************
  */
 /* USER CODE END Header */
-
+//
 /* Includes ------------------------------------------------------------------*/
 #include "FreeRTOS.h"
 #include "task.h"
@@ -330,13 +330,13 @@ void MX_FREERTOS_Init(void) {
 
 	/* Create the thread(s) */
 	/* creation of Navegacion */
-	NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
+	//NavegacionHandle = osThreadNew(NavegacionTask, NULL, &Navegacion_attributes);
 
 	/* creation of Taquito */
 	TaquitoHandle = osThreadNew(TaquitoTask, NULL, &Taquito_attributes);
 
 	/* creation of NavGlobal */
-	NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
+	//NavGlobalHandle = osThreadNew(Navegacion_Global, NULL, &NavGlobal_attributes);
 
 	/* creation of Control */
 	ControlHandle = osThreadNew(ControlTask, NULL, &Control_attributes);
@@ -432,13 +432,217 @@ void Navegacion_Global(void *argument)
 /* USER CODE END Header_ControlTask */
 void ControlTask(void *argument)
 {
-	/* USER CODE BEGIN ControlTask */
-	/* Infinite loop */
-	for(;;)
-	{
-		osDelay(1);
-	}
-	/* USER CODE END ControlTask */
+
+
+    // ===== INICIALIZACIÓN =====
+    osDelay(500);  // ← AÑADIDO: Esperar a que otras tareas inicialicen
+
+    if (!control_initialized) {
+        PoseController_Init(&pose_controller);
+        PWM_InitCompensation(&pwm_compensation);
+        control_initialized = 1;
+
+        // Mensaje de inicio SIN bloqueo
+        HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Inicializado\r\n", 24, 100);
+    }
+
+    // ===== Variables persistentes para MODE_POSE_GIRO =====
+    typedef enum { GYRO_IDLE = 0, GYRO_ROTATING } GyroState_t;
+    static GyroState_t giro_state = GYRO_IDLE;
+
+    static uint32_t giro_start_tick = 0;
+    static const uint32_t GIRO_TIMEOUT = 15000;
+    static float yaw_integrado = 0.0f;     // integración del gyro
+	static uint32_t last_tick = 0;         // para integrar dt
+	const float GIRO_WZ = 0.35f;           // velocidad angular de giro
+    const float GIRO_OBJ_RAD = 90.0f * M_PI / 180.0f;  // 90 grados
+
+    // Variables locales
+    static uint8_t target_set = 0;
+    static uint16_t telemetry_counter = 0;
+
+    GPS_Data_t gps_data;
+    ControlCommand_t cmd;
+    osStatus_t status;
+	Sensors_I2C_Handle_t hsensors = {0};
+
+    // Variables de trabajo para el control
+	float vx_cmd = 0.0f;
+	float wz_cmd = 0.0f;
+
+    // ===== BUCLE PRINCIPAL =====
+    for(;;)
+    {
+    	 // 1. Leer GPS actual
+		status = osMessageQueueGet(gpsDataQueueHandle, &gps_data, NULL, 10);
+		if (status != osOK) continue;
+
+		// Intentar leer un comando de la cola de Taquito (no bloqueante, timeout 0)
+		status = osMessageQueueGet(controlDataQueueHandle, &cmd, NULL, 0);
+		if (status != osOK) continue;
+
+		// 2. Convertir GPS a coordenadas locales (usar gpsACartesiano)
+		P_Cartesiano pos_actual = gpsACartesiano(estacionTerrena, &gps_data);
+
+		// 3. Obtener orientación (temporalmente de GPS course)
+		float theta_actual = deg2rad(gps_data.course);
+
+        // ----- ACTUALIZAR CONTROLADOR -----
+        PoseController_Update(&pose_controller, pos_actual.x, pos_actual.y, theta_actual);
+
+        // ----- VERIFICAR SI LLEGAMOS -----
+        if (pose_controller.target_reached) {
+            PWM_Commands_t stop_cmd = {0, 0, 0, 0};
+            Rover_SetPWM_Differential(&Rover, stop_cmd);
+
+            //HAL_UART_Transmit(&huart1, (uint8_t*)"[CONTROL] Target alcanzado!\r\n", 30, 100);
+
+            // Resetear controlador
+            PoseController_Reset(&pose_controller);
+
+            target_set = 0;
+            osDelay(2000);
+
+            continue;
+        }
+
+
+        // 4. SELECCIÓN DE LÓGICA DE CONTROL BASADA EN EL MODO
+       		switch (cmd.mode)
+       		{
+       			case MODE_WALL_FOLLOW: //control PID para el seguimiento de pared
+       				// Taquito ya calculó el PID lateral y dio el vx y wz (corrección)
+       				vx_cmd = cmd.target_vx;
+       				wz_cmd = cmd.target_wz;
+
+       				// Resetear el PID de pose (para que no interfiera)
+       				PoseController_Reset(&pose_controller);
+       				break;
+
+       			case MODE_POSE_GIRO:
+
+       				    // ============================================================
+       				    //  1) SI EL GIRO NO HA INICIADO --> inicializar integración
+       				    // ============================================================
+       				    if (giro_state == GYRO_IDLE)
+       				    {
+       				        yaw_integrado = 0.0f;
+       				        last_tick = HAL_GetTick();
+       				        giro_start_tick = last_tick;
+
+       				        giro_state = GYRO_ROTATING;
+
+       				        // dirección de giro
+       				        vx_cmd = 0.0f;
+       				        wz_cmd = (cmd.giro_dir == GIRO_ANTIHORARIO) ? GIRO_WZ : -GIRO_WZ;
+
+       				        break; // salir del switch
+       				    }
+
+       				    // ==========================================
+       				    //       2) SI EL GIRO ESTÁ EN CURSO
+       				    // ==========================================
+       				    if (giro_state == GYRO_ROTATING)
+       				    {
+       				        bool done = false;
+
+       				        // ----- Integrar gyro -----
+       				        uint32_t now = HAL_GetTick();
+       				        float dt = (now - last_tick) / 1000.0f;  // convertir a segundos
+       				        last_tick = now;
+
+       				        // IMPORTANTE: gyro_z debe estar en rad/s
+       				        status = osMessageQueueGet(sensorDataQueueHandle, &hsensors, NULL, 0);
+       				     	if (status != osOK) continue;
+
+       				        float gyro_z = hsensors.data.gyro[3];   // Asegúrate: gz YA normalizado en rad/s dentro del driver
+
+       				        yaw_integrado += gyro_z * dt;
+
+       				        // ----- Verificar si ya alcanzó 90° -----
+       				        if (cmd.giro_dir == GIRO_ANTIHORARIO)
+       				        {
+       				            if (yaw_integrado >= GIRO_OBJ_RAD)
+       				                done = true;
+       				        }
+       				        else // GIRO_HORARIO
+       				        {
+       				            if (yaw_integrado <= -GIRO_OBJ_RAD)
+       				                done = true;
+       				        }
+
+       				        // ----- Timeout -----
+       				        if ((now - giro_start_tick) > GIRO_TIMEOUT)
+       				            done = true;
+
+       				        // ----- Si terminó el giro -----
+       				        if (done)
+       				        {
+       				            PWM_Commands_t stop = {0};
+       				            Rover_SetPWM_Differential(&Rover, stop);
+
+       				            giro_state = GYRO_IDLE;
+
+       				            PoseController_Reset(&pose_controller);
+       				            break;
+       				        }
+
+       				        // ----- Si NO ha terminado → seguir girando -----
+       				        vx_cmd = 0.0f;
+       				        wz_cmd = (cmd.giro_dir == GIRO_ANTIHORARIO) ? GIRO_WZ : -GIRO_WZ;
+       				        break;
+       				    }
+       				    break;
+
+       			case MODE_POSE_TARGET: //la logica que ya se tenia, avanza hacia un target x,y
+       				// Comportamiento de control de pose original (ir a X, Y)
+       				PoseController_Update(&pose_controller,
+       									 pos_actual.x, pos_actual.y, theta_actual,
+       									 cmd.target_x, cmd.target_y); // Usar targets del comando
+
+       				vx_cmd = pose_controller.vx_cmd;
+       				wz_cmd = pose_controller.wz_cmd;
+       				break;
+
+       			case MODE_FORWARD:
+       				//avance "en bruto" desde taquito
+       				vx_cmd = cmd.target_vx;
+       				wz_cmd = cmd.target_wz;
+       				break;
+       		}
+
+        // ----- CINEMÁTICA Y PWM -----
+        WheelVelocities_t wheel_velocities = Kinematics_Inverse(
+            vx_cmd,
+            wz_cmd
+        );
+
+        PWM_Commands_t pwm_commands = PWM_FromWheelVelocities(
+            wheel_velocities,
+            &pwm_compensation
+        );
+
+        Rover_SetPWM_Differential(&Rover, pwm_commands);
+
+        // ----- TELEMETRÍA REDUCIDA (cada 2 segundos) -----
+        telemetry_counter++;
+        if (telemetry_counter >= 40) {  // 40 * 50ms = 2 segundos
+            telemetry_counter = 0;
+
+            // Telemetría compacta
+            char telem[128];
+            snprintf(telem, sizeof(telem),
+                    "Pos:(%.2f,%.2f) Dist:%.2fm PWM:(%u,%u)\r\n",
+                    sim_x, sim_y,
+                    pose_controller.distance_to_target,
+                    pwm_commands.pwm_right, pwm_commands.pwm_left);
+
+            HAL_UART_Transmit(&huart1, (uint8_t*)telem, strlen(telem), 100);
+        }
+
+        osDelay(50);  // 20Hz
+    }
+	
 }
 
 /* USER CODE BEGIN Header_UltrasonidoTask */
